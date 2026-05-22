@@ -47,6 +47,10 @@ body{font-family:var(--fb);background:var(--paper);color:var(--ink);min-height:1
 .mib svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2}
 .madd{display:flex;align-items:center;padding:0 12px;height:100%;border:none;background:transparent;font-family:var(--fb);font-size:12px;font-weight:500;color:var(--acc);cursor:pointer;border-bottom:2px solid transparent;transition:.15s}
 .madd:hover{background:var(--as)}
+.mlock{background:none;border:none;cursor:pointer;padding:0 2px;display:flex;align-items:center;opacity:.55;transition:.15s}
+.mlock:hover{opacity:1}
+.mlock.locked{opacity:1;color:var(--acc)}
+.mlock svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2}
 
 /* LAYOUT */
 .app{display:flex;height:calc(100vh - 52px)}
@@ -311,6 +315,39 @@ tfoot td.tl{text-align:left}
   </div>
 </div>
 
+<!-- CREDENTIALS MODAL -->
+<div class="ov" id="ov-cred">
+  <div class="md" style="max-width:520px">
+    <h3>🔑 Claves de acceso</h3>
+    <div id="cred-pass-step">
+      <p style="color:var(--ink2);font-size:13px;margin-bottom:12px">Ingresa tu contraseña de administrador para continuar.</p>
+      <input id="cred-pass" type="password" placeholder="Contraseña admin"
+        style="width:100%;padding:8px 12px;border:1.5px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fd);margin-bottom:8px"
+        onkeydown="if(event.key==='Enter')credUnlock()">
+      <div id="cred-err" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px">Contraseña incorrecta</div>
+      <div class="ma">
+        <button class="btn b-o" onclick="closeOv('ov-cred')">Cancelar</button>
+        <button class="btn b-a" onclick="credUnlock()">Ver claves</button>
+      </div>
+    </div>
+    <div id="cred-table-step" style="display:none">
+      <p style="color:var(--ink3);font-size:11px;margin-bottom:12px">Información confidencial — no compartir</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--paper)">
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid var(--rule);color:var(--ink3);font-weight:600">Usuario</th>
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid var(--rule);color:var(--ink3);font-weight:600">Contraseña</th>
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid var(--rule);color:var(--ink3);font-weight:600">Rol</th>
+          <th style="text-align:left;padding:6px 10px;border-bottom:2px solid var(--rule);color:var(--ink3);font-weight:600">Acceso</th>
+        </tr></thead>
+        <tbody id="cred-rows"></tbody>
+      </table>
+      <div class="ma" style="margin-top:16px">
+        <button class="btn b-o" onclick="closeOv('ov-cred')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- STUDENT EDIT MODAL -->
 <div class="ov" id="ov-edit">
   <div class="md">
@@ -556,20 +593,26 @@ const EDIT_PW  = '4614asis';
 let db          = {};
 // ── USUARIOS Y ROLES ──────────────────────────────────────────────────────────
 const USERS = {
-  'emag': { pass:'emag@4614',  courses:null,          role:'admin'   },
-  'NT':   { pass:'valecr0',    courses:['NT1','NT2'], role:'docente' },
-  '1':    { pass:'cint171',    courses:['1° Básico'], role:'docente' },
-  '2':    { pass:'patymu2',    courses:['2° Básico'], role:'docente' },
-  '3':    { pass:'katiuch3',   courses:['3° Básico'], role:'docente' },
-  '4':    { pass:'cinew4',     courses:['4° Básico'], role:'docente' },
-  '5':    { pass:'angebepe5',  courses:['5° Básico'], role:'docente' },
-  '6':    { pass:'alicoro6',   courses:['6° Básico'], role:'docente' },
-  '7':    { pass:'pipedt7',    courses:['7° Básico'], role:'docente' },
-  '8':    { pass:'karing8',    courses:['8° Básico'], role:'docente' },
+  'emag':     { pass:'emag@4614',  courses:null,          role:'admin'    },
+  'directivo':{ pass:'emag4614',   courses:null,          role:'readonly' },
+  'insp':     { pass:'insp2026',   courses:null,          role:'insp'     },
+  'NT':       { pass:'valecr0',    courses:['NT1','NT2'], role:'docente'  },
+  '1':        { pass:'cint171',    courses:['1° Básico'], role:'docente'  },
+  '2':        { pass:'patymu2',    courses:['2° Básico'], role:'docente'  },
+  '3':        { pass:'katiuch3',   courses:['3° Básico'], role:'docente'  },
+  '4':        { pass:'cinew4',     courses:['4° Básico'], role:'docente'  },
+  '5':        { pass:'angebepe5',  courses:['5° Básico'], role:'docente'  },
+  '6':        { pass:'alicoro6',   courses:['6° Básico'], role:'docente'  },
+  '7':        { pass:'pipedt7',    courses:['7° Básico'], role:'docente'  },
+  '8':        { pass:'karing8',    courses:['8° Básico'], role:'docente'  },
 };
 let currentUser = null;
 function isAdmin()        { return currentUser?.role === 'admin'; }
-function allowedCourses() { return isAdmin() ? COURSES : (currentUser?.courses || []); }
+function isInsp()         { return currentUser?.role === 'insp'; }
+function isDocente()      { return currentUser?.role === 'docente'; }
+function isReadOnly()     { return currentUser?.role === 'readonly'; }
+function canEdit()        { return isAdmin() || isInsp(); }
+function allowedCourses() { return (currentUser?.courses) ? currentUser.courses : COURSES; }
 
 let editMode    = false;  // unlocked by password
 let activeYear  = 2026;
@@ -879,6 +922,37 @@ function askConfirm(title,msg,cb,lbl='Confirmar') {
   cfCb=cb; document.getElementById('ov-confirm').classList.add('show');
 }
 function runConfirm() { if(cfCb){cfCb();cfCb=null;} closeOv('ov-confirm'); }
+
+// ── MODAL CLAVES ──────────────────────────────────────────────────────────────
+function openCredentials() {
+  if(!isAdmin()) return;
+  document.getElementById('cred-pass-step').style.display='block';
+  document.getElementById('cred-table-step').style.display='none';
+  document.getElementById('cred-pass').value='';
+  document.getElementById('cred-err').style.display='none';
+  document.getElementById('ov-cred').classList.add('show');
+  setTimeout(()=>document.getElementById('cred-pass').focus(),60);
+}
+function credUnlock() {
+  const p=document.getElementById('cred-pass').value;
+  if(p !== USERS['emag'].pass) {
+    document.getElementById('cred-err').style.display='block';
+    document.getElementById('cred-pass').value=''; return;
+  }
+  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente'};
+  const rows=Object.entries(USERS).map(([u,d])=>{
+    const courses=d.courses?d.courses.join(', '):'Todos los cursos';
+    return `<tr style="border-bottom:1px solid var(--rule2)">
+      <td style="padding:7px 10px;font-weight:600;font-family:var(--fd)">${u}</td>
+      <td style="padding:7px 10px;font-family:monospace;font-size:13px;color:var(--acc)">${d.pass}</td>
+      <td style="padding:7px 10px"><span class="eb ${d.role==='admin'?'ee':d.role==='insp'?'er':d.role==='readonly'?'eg':'ec'}">${roleLabel[d.role]||d.role}</span></td>
+      <td style="padding:7px 10px;color:var(--ink3);font-size:11px">${courses}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('cred-rows').innerHTML=rows;
+  document.getElementById('cred-pass-step').style.display='none';
+  document.getElementById('cred-table-step').style.display='block';
+}
 function closeOv(id) { document.getElementById(id).classList.remove('show'); }
 document.addEventListener('DOMContentLoaded',()=>
   document.querySelectorAll('.ov').forEach(o=>
@@ -899,6 +973,17 @@ function addMonth(name,label,month,year) {
   });
   saveDB(); curMonth=name; curCourse=COURSES.find(c=>db[name]?.[c])||null;
   renderAll(); toast(label+' creado — '+headers.length+' días ✓');
+}
+
+// ── BLOQUEO DE MESES ─────────────────────────────────────────────────────────
+function isMonthLocked(name) { return !!(db._locks && db._locks[name]); }
+function toggleMonthLock(name, e) {
+  if(e) e.stopPropagation();
+  if(!isAdmin()) return;
+  if(!db._locks) db._locks = {};
+  db._locks[name] = !db._locks[name];
+  saveDB(); renderTabs();
+  toast(db._locks[name]?'Mes bloqueado 🔒':'Mes desbloqueado 🔓', db._locks[name]?'err':'ok');
 }
 
 function removeLastMonth() {
@@ -1094,11 +1179,18 @@ function renderTabs() {
   const exist=months.filter(m=>db[m.name]);
   const pending=months.filter(m=>!db[m.name]);
   document.getElementById('month-tabs').innerHTML=
-    exist.map(m=>`
-      <div class="mtab${curMonth===m.name?' on':''}">
+    exist.map(m=>{
+      const locked=isMonthLocked(m.name);
+      const lockIcon=locked
+        ?`<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
+        :`<svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`;
+      return `<div class="mtab${curMonth===m.name?' on':''}">
         <span onclick="selectMonth('${m.name}')" style="cursor:pointer">${m.label}</span>
-
-      </div>`).join('')+
+        <button class="mlock${locked?' locked':''}" onclick="toggleMonthLock('${m.name}',event)"
+          title="${isAdmin()?(locked?'Clic: desbloquear mes':'Clic: bloquear mes'):(locked?'Mes bloqueado':'Mes abierto')}"
+          ${isAdmin()?'':'style="cursor:default;pointer-events:none"'}>${lockIcon}</button>
+      </div>`;
+    }).join('')+
     (isAdmin()?pending.map(m=>`<button class="madd" onclick="askConfirm('Agregar mes','¿Estás seguro que deseas agregar <strong>${m.label}</strong>?',()=>addMonth('${m.name}','${m.label}',${m.month},${m.year}),'Agregar mes')">+ ${m.label}</button>`).join(''):'') +
     (isAdmin()&&exist.length?`<button class="madd no-print" onclick="removeLastMonth()" style="color:var(--red);margin-left:4px" title="Eliminar último mes (${exist[exist.length-1].label})">− ${exist[exist.length-1].label}</button>`:'');
 }
@@ -1139,7 +1231,7 @@ function killCharts() {
 
 // ── SECTION SWITCHING ─────────────────────────────────────────────────────────
 function setSection(s) {
-  if(!isAdmin() && s!=='mes' && s!=='listado') return;
+  if(isDocente() && s!=='mes' && s!=='listado') return;
   curSection=s; renderMain();
 }
 function setView(v) { curView=v; renderMain(); }
@@ -1158,7 +1250,7 @@ function renderMain() {
   const label=mLabel(curMonth);
 
   // Docentes: solo secciones permitidas
-  if(!isAdmin() && curSection!=='mes' && curSection!=='listado') curSection='mes';
+  if(isDocente() && curSection!=='mes' && curSection!=='listado') curSection='mes';
 
   // Toolbar (always shown)
   const toolbar=`
@@ -1166,10 +1258,10 @@ function renderMain() {
       <div class="ttl">${label} · ${curCourse}${editMode?'':' <span style="font-size:9px;background:var(--rule2);color:var(--ink3);padding:2px 7px;border-radius:10px;font-weight:400;vertical-align:middle">👁 solo lectura</span>'}</div>
       <div class="vt">
         <button class="vb${curSection==='mes'?' on':''}" onclick="setSection('mes')">📋 Mes</button>
-        ${isAdmin()?`
+        ${!isDocente()?`
         <button class="vb${curSection==='acumulado'?' on':''}" onclick="setSection('acumulado')">📊 Acumulado</button>
         <button class="vb${curSection==='honor'?' on':''}"     onclick="setSection('honor')">🏅 Honor</button>
-        ${editMode?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
+        ${(isAdmin()&&editMode)||isReadOnly()?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
         `:''}
         <button class="vb${curSection==='listado'?' on':''}" onclick="setSection('listado')">👥 Listado</button>
       </div>
@@ -1186,14 +1278,18 @@ function renderMain() {
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar
       </button>`:''}
       `:''}
-      ${isAdmin()?`<button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Panel de edición':'Activar modo edición'}">
+      ${canEdit()?`<button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Modo edición activo':(isMonthLocked(curMonth)?'Mes bloqueado 🔒':'Activar modo edición')}">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         ⚙️${editMode?' Editar':''}
       </button>`:''}
       ${isAdmin()&&editMode?`<button class="btn b-o no-print" onclick="openReportModal()" style="flex-shrink:0" title="Generar informe Word — Inspectoría General">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       </button>`:''}
-      ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
+      ${isAdmin()?`<button class="btn b-o no-print" onclick="openCredentials()" style="flex-shrink:0" title="Ver claves de acceso">
+        <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        Claves
+      </button>`:''}
+      ${canEdit()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Salir edición
       </button>`:''}
@@ -2199,16 +2295,26 @@ function openGear() {
   if(editMode) {
     toast('Ya estás en modo edición — haz clic en el nombre de un alumno para editarlo');
     return;
-  } else {
-    // Show password step
-    document.getElementById('ep-course').textContent = curCourse;
-    document.getElementById('ep-pass-step').style.display = 'block';
-    document.getElementById('ep-list-step').style.display = 'none';
-    document.getElementById('ep-pass').value = '';
-    document.getElementById('ep-pass-err').style.display = 'none';
-    document.getElementById('ov-editpanel').classList.add('show');
-    setTimeout(()=>document.getElementById('ep-pass').focus(), 60);
   }
+  if(isInsp()) {
+    if(isMonthLocked(curMonth)) {
+      toast('Este mes está bloqueado 🔒 — el administrador debe desbloquearlo','err');
+      return;
+    }
+    editMode = true;
+    renderAll();
+    toast('Modo edición activo ✓','ok');
+    return;
+  }
+  if(!isAdmin()) return;
+  // Admin: show password dialog
+  document.getElementById('ep-course').textContent = curCourse;
+  document.getElementById('ep-pass-step').style.display = 'block';
+  document.getElementById('ep-list-step').style.display = 'none';
+  document.getElementById('ep-pass').value = '';
+  document.getElementById('ep-pass-err').style.display = 'none';
+  document.getElementById('ov-editpanel').classList.add('show');
+  setTimeout(()=>document.getElementById('ep-pass').focus(), 60);
 }
 function openEditPanel() { openGear(); }
 
