@@ -122,8 +122,8 @@ tr:hover td.col-hl{background:#C7D3FF!important}
 td.dc{text-align:center;padding:3px 3px;cursor:pointer;user-select:none}
 td.dc:hover{background:#E8EDFF}
 td.dc.blk{background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 3px,#F5F3FF 3px,#F5F3FF 6px)!important;cursor:not-allowed}
-.pr{color:var(--grn);font-size:12px;line-height:1}
-.ab{color:#C48A2A;font-size:12px;line-height:1}
+.pr{color:var(--grn);font-size:13px;line-height:1;font-weight:700}
+.ab{color:#C48A2A;font-size:13px;line-height:1;font-weight:700}
 td.pc{text-align:center;font-size:11.5px;font-weight:700;letter-spacing:-.02em}
 tfoot td{background:var(--paper);font-weight:700;font-size:9.5px;border-top:2px solid var(--rule);padding:7px 8px;text-align:center;color:var(--ink2)}
 tfoot td.tl{text-align:left}
@@ -998,7 +998,7 @@ function toggleBlock(di) {
       cell.classList.remove('blk');
       cell.setAttribute('onclick',`toggleDay(${si},${di})`);
       const v=d.students[si]?.dias[di]??false;
-      cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`;
+      cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`;
     }
   });
   // Update blocked bar
@@ -1113,6 +1113,10 @@ function renderMain() {
         <button class="vb${curView==='tabla'?' on':''}"   onclick="setView('tabla')">Tabla</button>
         <button class="vb${curView==='charts'?' on':''}"  onclick="setView('charts')">Gráficos</button>
       </div>
+      ${editMode?`<button class="btn b-o no-print" onclick="markAllPresent()" title="Marcar todos presentes" style="color:var(--grn);border-color:rgba(43,138,62,.3)">
+        <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        Todos presentes
+      </button>`:''}
       ${editMode?`<button class="btn b-o no-print" onclick="toggleAF()">
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar
       </button>`:''}
@@ -1217,7 +1221,7 @@ function renderMes(data,label) {
     const cells=headers.map((_,di)=>{
       const v=s.dias[di]??false, ib=bs.has(di);
       return `<td class="dc${ib?' blk':''}" data-si="${si}" data-di="${di}"${ib?'':` onclick="toggleDay(${si},${di})"`}>
-        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`}
+        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
       </td>`;
     }).join('');
     return `<tr>
@@ -1604,7 +1608,7 @@ function toggleDay(si,di) {
   const cell=document.querySelector(`td.dc[data-si="${si}"][data-di="${di}"]`);
   if(cell){
     const v=d.students[si].dias[di];
-    cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`;
+    cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`;
   }
   // Update that student's row stats (presentes, ausentes, %)
   updateStudentRowStats(si);
@@ -1663,6 +1667,25 @@ function updateStatsBar() {
   upd('sb-gra',st.gra,'warn');
   upd('sb-cri',st.cri,'bad');
 }
+function markAllPresent() {
+  const data = db[curMonth]?.[curCourse];
+  if(!data) return;
+  const dias = data.headers.length;
+  const bs   = new Set(data.blocked||[]);
+  askConfirm(
+    'Marcar todos presentes',
+    'Se marcarán <strong>todos los alumnos como presentes</strong> en todos los días hábiles del mes. Luego puedes marcar manualmente las inasistencias.',
+    ()=>{
+      data.students.forEach(s=>{
+        s.dias = Array.from({length:dias}, (_,i)=> bs.has(i) ? false : true);
+      });
+      saveDB(); renderAll();
+      toast('Todos marcados como presentes ✓','ok');
+    },
+    'Marcar todos'
+  );
+}
+
 function toggleAF() {
   const f=document.getElementById('af');
   if(f){f.classList.toggle('show');if(f.classList.contains('show'))setTimeout(()=>document.getElementById('nrut').focus(),60);}
