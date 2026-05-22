@@ -279,6 +279,12 @@ tfoot td.tl{text-align:left}
     </select>
     <button onclick="window.print()">Imprimir</button>
   </div>
+  <div class="tr no-print" style="border-left:1px solid var(--rule)">
+    <button onclick="doLogout()" style="color:var(--red);border-color:rgba(201,42,42,.25);display:flex;align-items:center;gap:5px">
+      <svg viewBox="0 0 24 24" style="width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Salir
+    </button>
+  </div>
 </div>
 
 <div class="app">
@@ -456,6 +462,17 @@ function doLogin() {
   }
 }
 
+function doLogout() {
+  sessionStorage.removeItem('emag_auth');
+  document.getElementById('landing').classList.remove('hidden');
+  document.querySelector('.top').style.display='none';
+  document.querySelector('.app').style.display='none';
+  document.getElementById('ld-user').value='';
+  document.getElementById('ld-pass').value='';
+  document.getElementById('ld-err').style.display='none';
+  setTimeout(()=>document.getElementById('ld-user').focus(),150);
+}
+
 // ── FIREBASE CONFIG ── Reemplaza con tus datos de Firebase Console ────────────
 // Ir a: console.firebase.google.com → Tu proyecto → Configuración → Agregar app web
 const FIREBASE_CONFIG = {
@@ -552,13 +569,32 @@ function buildMonth(year, month) {
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
+let _suppressListener = false;
+
 function saveDB() {
-  // Siempre guarda en localStorage como respaldo
-  try{ localStorage.setItem(DB_KEY,JSON.stringify(db)); }catch(e){}
-  // Si Firebase está activo, también guarda en la nube
+  // Silenciar el listener brevemente para no re-renderizar al guardar local
+  _suppressListener = true;
+  setTimeout(()=>{ _suppressListener = false; }, 1500);
+  // Guardar en Firebase (fuente principal)
   if(useFirebase && firebaseDB){
     firebaseDB.ref(DB_PATH).set(db).catch(e=>console.error('Firebase save error:',e));
   }
+  // Respaldo local
+  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
+}
+
+function startRealtimeSync() {
+  if(!useFirebase || !firebaseDB) return;
+  firebaseDB.ref(DB_PATH).on('value', snap => {
+    if(_suppressListener) return; // cambio propio, ignorar
+    if(!snap.exists()) return;
+    const remote = fbFix(snap.val());
+    if(!remote) return;
+    db = remote;
+    mergeInitial();
+    renderAll();
+    toast('Datos actualizados desde otro equipo');
+  }, e => console.warn('Sync error:', e));
 }
 
 function mergeInitial() {
@@ -2283,6 +2319,7 @@ loadDB().then(()=>{
   curMonth  = monthsForYear(activeYear).find(m=>db[m.name])?.name||null;
   curCourse = curMonth?COURSES.find(c=>db[curMonth]?.[c])||null:null;
   renderAll();
+  startRealtimeSync(); // escucha cambios en tiempo real desde Firebase
 });
 </script>
 </body>
