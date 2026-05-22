@@ -764,7 +764,8 @@ function csBar() {
 // Cumulative data for a course
 function dayStatus(s, i, dayNums, yr, mn) {
   if(s.fecha_ingreso) {
-    const ing=new Date(s.fecha_ingreso); ing.setHours(0,0,0,0);
+    const [_iy,_im,_id]=s.fecha_ingreso.split('-').map(Number);
+    const ing=new Date(_iy,_im-1,_id); // hora local, sin desfase UTC
     const dt=new Date(yr,mn-1,dayNums[i]||i+1);
     if(dt<ing) return 'no-matriculado';
   }
