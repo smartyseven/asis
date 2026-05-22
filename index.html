@@ -123,6 +123,7 @@ th.week-sep,td.week-sep{border-right:2px solid #3B5BDB!important}
 td.dc{text-align:center;padding:3px 3px;cursor:pointer;user-select:none}
 td.dc:hover{background:#E8EDFF}
 td.dc.blk{background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 3px,#F5F3FF 3px,#F5F3FF 6px)!important;cursor:not-allowed}
+td.dc.nmat{background:repeating-linear-gradient(45deg,#E4E4E7,#E4E4E7 2px,#F4F4F5 2px,#F4F4F5 5px)!important;cursor:not-allowed;opacity:.6}
 .pr{color:var(--grn);font-size:13px;line-height:1;font-weight:700}
 .ab{color:#C48A2A;font-size:13px;line-height:1;font-weight:700}
 td.pc{text-align:center;font-size:11.5px;font-weight:700;letter-spacing:-.02em}
@@ -1184,12 +1185,19 @@ function renderMes(data,label) {
     const d=new Date(yr2,mn2-1,dayNums[i]||i+1);
     return d<=today;
   });
-  const st=calcStats(students,headers,blocked);
-  // Override act with elapsed days only
+  // Stats using elapsed days + fecha_ingreso per student
   const actElapsed=elapsedIdx.length;
-  const stElapsed={...st,act:actElapsed,
-    pct:students.length&&actElapsed?
-      students.reduce((a,s)=>a+elapsedIdx.filter(i=>s.dias[i]).length,0)/(students.length*actElapsed):0};
+  let esp2=0,rei2=0,gra2=0,cri2=0,pctSum2=0;
+  students.forEach(s=>{
+    const validEl=elapsedIdx.filter(i=>dayStatus(s,i,dayNums,yr2,mn2)!=='no-matriculado');
+    const pr=validEl.filter(i=>s.dias[i]).length;
+    const act=validEl.length;
+    const p=act>0?pr/act:0;
+    pctSum2+=p;
+    if(p>=0.90)esp2++; else if(p>=0.85)rei2++; else if(p>=0.50)gra2++; else cri2++;
+  });
+  const pctFinal=students.length?pctSum2/students.length:0;
+  const stElapsed={act:actElapsed,pct:pctFinal,esp:esp2,rei:rei2,gra:gra2,cri:cri2};
   const totalMonthDays=(headers||[]).filter((_,i)=>!bs.has(i)).length;
   const pc=stElapsed.pct>=0.85?'ok':stElapsed.pct>=0.70?'warn':'bad';
 
@@ -1235,15 +1243,19 @@ function renderMes(data,label) {
   }).join('');
 
   const rows=students.map((s,si)=>{
-    const pr=elapsedIdx.filter(i=>s.dias[i]).length;
-    const aus=actElapsed-pr;
-    const p=actElapsed>0?pr/actElapsed:0;
+    const validEl=elapsedIdx.filter(i=>dayStatus(s,i,dayNums,yr2,mn2)!=='no-matriculado');
+    const pr=validEl.filter(i=>s.dias[i]).length;
+    const aus=validEl.length-pr;
+    const p=validEl.length>0?pr/validEl.length:0;
     const est=estado(p);
     const cells=headers.map((hd,di)=>{
       const v=s.dias[di]??false, ib=bs.has(di);
       const isFri=hd.startsWith('Vi');
-      return `<td class="dc${ib?' blk':''}${isFri?' week-sep':''}" data-si="${si}" data-di="${di}"${ib?'':` onclick="toggleDay(${si},${di})"`}>
-        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
+      const dst=dayStatus(s,di,dayNums,yr2,mn2);
+      const isNoMat=dst==='no-matriculado';
+      const isBlocked=ib||isNoMat;
+      return `<td class="dc${ib?' blk':isNoMat?' nmat':''}${isFri?' week-sep':''}" data-si="${si}" data-di="${di}"${isBlocked?'':` onclick="toggleDay(${si},${di})"`}>
+        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':isNoMat?'<span style="color:#aaa;font-size:9px;line-height:1">·</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
       </td>`;
     }).join('');
     return `<tr>
@@ -1626,6 +1638,12 @@ function toggleDay(si,di) {
   if(!editMode){ toast('Activa el modo edición ⚙️ para modificar','err'); return; }
   const d=db[curMonth][curCourse];
   if((d.blocked||[]).includes(di)) return;
+  // Block pre-enrollment days
+  const _dn=d.dayNums||(d.headers||[]).map((_,i)=>i+1);
+  const _pts=curMonth.split(' ');
+  const _yr=parseInt(_pts[_pts.length-1]);
+  const _mn=MNAMES.indexOf(_pts.slice(0,-1).join(' '))+1;
+  if(dayStatus(d.students[si],di,_dn,_yr,_mn)==='no-matriculado') return;
   d.students[si].dias[di]=!d.students[si].dias[di];
   saveDB();
   // Update only the clicked cell — no full re-render
@@ -1656,8 +1674,9 @@ function updateStudentRowStats(si) {
     const dd=new Date(yr,mn-1,dayNums[i]||i+1);
     return dd<=today;
   });
-  const pr=elapsedIdx.filter(i=>s.dias[i]).length;
-  const act=elapsedIdx.length;
+  const validEl=elapsedIdx.filter(i=>dayStatus(s,i,dayNums,yr,mn)!=='no-matriculado');
+  const pr=validEl.filter(i=>s.dias[i]).length;
+  const act=validEl.length;
   const aus=act-pr;
   const p=act>0?pr/act:0;
   const est=estado(p);
@@ -1688,30 +1707,59 @@ function updateDayFooter(di) {
 function updateStatsBar() {
   const d=db[curMonth][curCourse];
   if(!d) return;
-  // Use same year/month extraction as renderMes
+  const students=d.students||[];
+  const headers=d.headers||[];
+  const blocked=d.blocked||[];
+  const dayNums=d.dayNums||headers.map((_,i)=>i+1);
+  const bs=new Set(blocked);
   const parts=curMonth.split(' ');
   const yr=parseInt(parts[parts.length-1]);
   const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
-  const st=calcStats(d.students||[],d.headers||[],d.blocked||[],d.dayNums,yr,mn);
-  const pc=st.pct>=0.90?'ok':st.pct>=0.85?'warn':'bad';
+  const today=new Date(); today.setHours(23,59,59,999);
+  // Only elapsed (past) days, not blocked
+  const elapsedIdx=headers.map((_,i)=>i).filter(i=>{
+    if(bs.has(i)) return false;
+    const dd=new Date(yr,mn-1,dayNums[i]||i+1);
+    return dd<=today;
+  });
+  // Per-student calculation respecting fecha_ingreso
+  let esp=0,rei=0,gra=0,cri=0,pctSum=0;
+  students.forEach(s=>{
+    const validEl=elapsedIdx.filter(i=>dayStatus(s,i,dayNums,yr,mn)!=='no-matriculado');
+    const pr=validEl.filter(i=>s.dias[i]).length;
+    const act=validEl.length;
+    const p=act>0?pr/act:0;
+    pctSum+=p;
+    if(p>=0.90)esp++; else if(p>=0.85)rei++; else if(p>=0.50)gra++; else cri++;
+  });
+  const pct=students.length?pctSum/students.length:0;
+  const pc=pct>=0.90?'ok':pct>=0.85?'warn':'bad';
   const upd=(id,val,cls)=>{const e=document.getElementById(id);if(e){e.textContent=val;if(cls)e.className='sn '+cls;}};
-  upd('sb-pct',Math.round(st.pct*100)+'%',pc);
-  upd('sb-esp',st.esp,'ok');
-  upd('sb-rei',st.rei,'acc');
-  upd('sb-gra',st.gra,'warn');
-  upd('sb-cri',st.cri,'bad');
+  upd('sb-pct',Math.round(pct*100)+'%',pc);
+  upd('sb-esp',esp,'ok');
+  upd('sb-rei',rei,'acc');
+  upd('sb-gra',gra,'warn');
+  upd('sb-cri',cri,'bad');
 }
 function markAllPresent() {
   const data = db[curMonth]?.[curCourse];
   if(!data) return;
   const dias = data.headers.length;
   const bs   = new Set(data.blocked||[]);
+  const _dn  = data.dayNums||data.headers.map((_,i)=>i+1);
+  const _pts = curMonth.split(' ');
+  const _yr  = parseInt(_pts[_pts.length-1]);
+  const _mn  = MNAMES.indexOf(_pts.slice(0,-1).join(' '))+1;
   askConfirm(
     'Marcar todos presentes',
     'Se marcarán <strong>todos los alumnos como presentes</strong> en todos los días hábiles del mes. Luego puedes marcar manualmente las inasistencias.',
     ()=>{
       data.students.forEach(s=>{
-        s.dias = Array.from({length:dias}, (_,i)=> bs.has(i) ? false : true);
+        s.dias = Array.from({length:dias}, (_,i)=>{
+          if(bs.has(i)) return false;
+          if(dayStatus(s,i,_dn,_yr,_mn)==='no-matriculado') return false;
+          return true;
+        });
       });
       saveDB(); renderAll();
       toast('Todos marcados como presentes ✓','ok');
