@@ -996,7 +996,7 @@ function toggleBlock(di) {
       cell.classList.remove('blk');
       cell.setAttribute('onclick',`toggleDay(${si},${di})`);
       const v=d.students[si]?.dias[di]??false;
-      cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'○'}</span>`;
+      cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`;
     }
   });
   // Update blocked bar
@@ -1215,7 +1215,7 @@ function renderMes(data,label) {
     const cells=headers.map((_,di)=>{
       const v=s.dias[di]??false, ib=bs.has(di);
       return `<td class="dc${ib?' blk':''}" data-si="${si}" data-di="${di}"${ib?'':` onclick="toggleDay(${si},${di})"`}>
-        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'●':'○'}</span>`}
+        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`}
       </td>`;
     }).join('');
     return `<tr>
@@ -1602,7 +1602,7 @@ function toggleDay(si,di) {
   const cell=document.querySelector(`td.dc[data-si="${si}"][data-di="${di}"]`);
   if(cell){
     const v=d.students[si].dias[di];
-    cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'○'}</span>`;
+    cell.innerHTML=`<span class="${v?'pr':'ab'}">${v?'●':'●'}</span>`;
   }
   // Update that student's row stats (presentes, ausentes, %)
   updateStudentRowStats(si);
