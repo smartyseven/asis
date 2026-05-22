@@ -119,6 +119,7 @@ tr:nth-child(even) td.nc,tr:nth-child(even) td.rc{background:#FAFAFA}
 tr:hover td{background:#F0F4FF!important}
 td.col-hl{background:#F0F4FF!important}
 tr:hover td.col-hl{background:#C7D3FF!important}
+th.week-sep,td.week-sep{border-right:2px solid #3B5BDB!important}
 td.dc{text-align:center;padding:3px 3px;cursor:pointer;user-select:none}
 td.dc:hover{background:#E8EDFF}
 td.dc.blk{background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 3px,#F5F3FF 3px,#F5F3FF 6px)!important;cursor:not-allowed}
@@ -869,6 +870,24 @@ function addMonth(name,label,month,year) {
   renderAll(); toast(label+' creado — '+headers.length+' días ✓');
 }
 
+function removeLastMonth() {
+  if(!editMode){ toast('Activa el modo edición ⚙️ para esta acción','err'); return; }
+  const months=monthsForYear(activeYear).filter(m=>db[m.name]);
+  if(!months.length){ toast('No hay meses para eliminar','err'); return; }
+  const last=months[months.length-1];
+  askConfirm('Eliminar mes',
+    `¿Estás seguro que deseas eliminar <strong>${last.label}</strong> y <strong>todos sus datos de asistencia</strong>? Esta acción no se puede deshacer.`,
+    ()=>{
+      delete db[last.name];
+      if(curMonth===last.name){
+        const rem=monthsForYear(activeYear).filter(m=>db[m.name]);
+        curMonth=rem.length?rem[rem.length-1].name:null;
+        curCourse=curMonth?COURSES.find(c=>db[curMonth]?.[c])||null:null;
+      }
+      saveDB(); renderAll(); toast(last.label+' eliminado','ok');
+    }, 'Eliminar mes');
+}
+
 // ── STUDENT EDIT MODAL ────────────────────────────────────────────────────────
 function openEdit(month,course,si) {
   seTarget={month,course,si};
@@ -1047,9 +1066,10 @@ function renderTabs() {
     exist.map(m=>`
       <div class="mtab${curMonth===m.name?' on':''}">
         <span onclick="selectMonth('${m.name}')" style="cursor:pointer">${m.label}</span>
-        
+
       </div>`).join('')+
-    pending.map(m=>`<button class="madd" onclick="addMonth('${m.name}','${m.label}',${m.month},${m.year})">+ ${m.label}</button>`).join('');
+    pending.map(m=>`<button class="madd" onclick="askConfirm('Agregar mes','¿Estás seguro que deseas agregar <strong>${m.label}</strong>?',()=>addMonth('${m.name}','${m.label}',${m.month},${m.year}),'Agregar mes')">+ ${m.label}</button>`).join('')+
+    (exist.length?`<button class="madd no-print" onclick="removeLastMonth()" style="color:var(--red);margin-left:4px" title="Eliminar último mes (${exist[exist.length-1].label})">− ${exist[exist.length-1].label}</button>`:'');
 }
 
 function renderCourses() {
@@ -1205,7 +1225,8 @@ function renderMes(data,label) {
   // Two-row header: DOW abbrev on top, day number on bottom
   const ths=headers.map((d,i)=>{
     const blocked=bs.has(i);
-    return `<th class="dh${blocked?' dblk':''}" onclick="toggleBlock(${i})" data-di="${i}"
+    const isFri=d.startsWith('Vi');
+    return `<th class="dh${blocked?' dblk':''}${isFri?' week-sep':''}" onclick="toggleBlock(${i})" data-di="${i}"
       title="${blocked?'Clic: desbloquear':'Clic: bloquear'}"
       style="padding:2px 3px;min-width:26px;width:26px">
       <div style="font-size:7.5px;opacity:.6;font-weight:400;line-height:1.2">${d}</div>
@@ -1218,9 +1239,10 @@ function renderMes(data,label) {
     const aus=actElapsed-pr;
     const p=actElapsed>0?pr/actElapsed:0;
     const est=estado(p);
-    const cells=headers.map((_,di)=>{
+    const cells=headers.map((hd,di)=>{
       const v=s.dias[di]??false, ib=bs.has(di);
-      return `<td class="dc${ib?' blk':''}" data-si="${si}" data-di="${di}"${ib?'':` onclick="toggleDay(${si},${di})"`}>
+      const isFri=hd.startsWith('Vi');
+      return `<td class="dc${ib?' blk':''}${isFri?' week-sep':''}" data-si="${si}" data-di="${di}"${ib?'':` onclick="toggleDay(${si},${di})"`}>
         ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
       </td>`;
     }).join('');
@@ -1240,13 +1262,15 @@ function renderMes(data,label) {
     </tr>`;
   }).join('');
 
-  const totRow=headers.map((_,di)=>{
-    if(bs.has(di)) return `<td style="background:repeating-linear-gradient(45deg,#ede0ff,#ede0ff 2px,#f8f2ff 2px,#f8f2ff 5px);text-align:center">—</td>`;
+  const totRow=headers.map((hd,di)=>{
+    const isFri=hd.startsWith('Vi');
+    const sep=isFri?' week-sep':'';
+    if(bs.has(di)) return `<td class="${sep}" style="background:repeating-linear-gradient(45deg,#ede0ff,#ede0ff 2px,#f8f2ff 2px,#f8f2ff 5px);text-align:center">—</td>`;
     // Future days show dimmed
     const isFuture=!elapsedIdx.includes(di);
-    if(isFuture) return `<td style="text-align:center;color:#ccc;font-size:9px">—</td>`;
+    if(isFuture) return `<td class="${sep}" style="text-align:center;color:#ccc;font-size:9px">—</td>`;
     const c=students.filter(s=>s.dias[di]).length;
-    return `<td>${students.length?Math.round(c/students.length*100)+'%':'—'}</td>`;
+    return `<td class="${sep}">${students.length?Math.round(c/students.length*100)+'%':'—'}</td>`;
   }).join('');
 
   const addForm=`<div class="af no-print" id="af">
@@ -1622,8 +1646,18 @@ function updateStudentRowStats(si) {
   const d=db[curMonth][curCourse];
   const bs=new Set(d.blocked||[]);
   const s=d.students[si];
-  const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
-  const act=(d.headers||[]).filter((_,i)=>!bs.has(i)).length;
+  const dayNums=d.dayNums||(d.headers||[]).map((_,i)=>i+1);
+  const parts=curMonth.split(' ');
+  const yr=parseInt(parts[parts.length-1]);
+  const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+  const today=new Date(); today.setHours(23,59,59,999);
+  const elapsedIdx=(d.headers||[]).map((_,i)=>i).filter(i=>{
+    if(bs.has(i)) return false;
+    const dd=new Date(yr,mn-1,dayNums[i]||i+1);
+    return dd<=today;
+  });
+  const pr=elapsedIdx.filter(i=>s.dias[i]).length;
+  const act=elapsedIdx.length;
   const aus=act-pr;
   const p=act>0?pr/act:0;
   const est=estado(p);
