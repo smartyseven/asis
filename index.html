@@ -457,10 +457,18 @@ function doLogin() {
   if(usr && p === usr.pass) {
     currentUser = { user: u, ...usr };
     sessionStorage.setItem('emag_auth', u);
+    // Reset navigation state to avoid residual data from previous session
+    editMode   = false;
+    curSection = 'mes';
+    curView    = 'tabla';
+    const allowed = allowedCourses();
+    curMonth  = monthsForYear(activeYear).find(m=>db[m.name])?.name||null;
+    curCourse = curMonth ? allowed.find(c=>db[curMonth]?.[c])||null : null;
     document.getElementById('landing').classList.add('hidden');
     document.querySelector('.top').style.display='';
     document.querySelector('.app').style.display='';
     err.style.display='none';
+    renderAll();
   } else {
     err.style.display='block';
     document.getElementById('ld-pass').value='';
@@ -1354,100 +1362,128 @@ function renderMes(data,label) {
     </div>`;
 }
 
-// ── SECCIÓN LISTADO ───────────────────────────────────────────────────────────
+// ── SECCIÓN LISTADO (acumulado a la fecha, por curso permitido) ────────────────
 function renderListado() {
-  if(!curMonth) return '<div class="empty"><h3>Selecciona un mes</h3></div>';
-  const allowed = allowedCourses();
-  const parts = curMonth.split(' ');
-  const yr = parseInt(parts[parts.length-1]);
-  const mn = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
-  const today = new Date(); today.setHours(23,59,59,999);
-  const label = mLabel(curMonth);
+  const allowed  = allowedCourses();
+  const today    = new Date(); today.setHours(23,59,59,999);
+  const allMonths= monthsForYear(activeYear).map(m=>m.name);
 
-  const activeCourses = allowed.filter(c=>db[curMonth]?.[c]);
-  if(!activeCourses.length) return '<div class="empty"><h3>Sin datos para este mes</h3></div>';
+  // Build per-course cumulative student map
+  // courseData[course] = { students: {rut→{nombre,pres,act}}, totalDays, avgPct, esp,rei,gra,cri }
+  const activeCourses = allowed.filter(c=>allMonths.some(m=>db[m]?.[c]));
+  if(!activeCourses.length) return '<div class="empty"><h3>Sin datos aún</h3></div>';
 
-  // Admin: summary across all courses
-  let summaryHtml = '';
-  if(isAdmin()) {
-    let totalPct=0, totalStu=0, totEsp=0, totRei=0, totGra=0, totCri=0;
-    activeCourses.forEach(c=>{
-      const data=db[curMonth][c];
-      const headers=data.headers||[];
-      const dayNums=data.dayNums||headers.map((_,i)=>i+1);
-      const bs=new Set(data.blocked||[]);
-      const elIdx=headers.map((_,i)=>i).filter(i=>{
-        if(bs.has(i)) return false;
-        return new Date(yr,mn-1,dayNums[i]||i+1)<=today;
-      });
+  const courseData = {};
+  activeCourses.forEach(course=>{
+    const map = {};
+    let courseDays = 0;
+    allMonths.forEach(month=>{
+      if(!db[month]?.[course]) return;
+      const data   = db[month][course];
+      const headers= data.headers||[];
+      const dayNums= data.dayNums||headers.map((_,i)=>i+1);
+      const bs     = new Set(data.blocked||[]);
+      const parts  = month.split(' ');
+      const yr     = parseInt(parts[parts.length-1]);
+      const mn     = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+
+      // Ensure all students exist in map
       (data.students||[]).forEach(s=>{
-        const valEl=elIdx.filter(i=>dayStatus(s,i,dayNums,yr,mn)!=='no-matriculado');
-        const pr=valEl.filter(i=>s.dias[i]).length;
-        const p=valEl.length>0?pr/valEl.length:0;
-        totalPct+=p; totalStu++;
-        if(p>=0.90)totEsp++; else if(p>=0.85)totRei++; else if(p>=0.50)totGra++; else totCri++;
+        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0};
+      });
+
+      // Count elapsed days for this month
+      headers.forEach((_,i)=>{
+        if(bs.has(i)) return;
+        const dt=new Date(yr,mn-1,dayNums[i]||i+1);
+        if(dt>today) return;
+        courseDays++;
+        (data.students||[]).forEach(s=>{
+          if(!map[s.rut]) return;
+          const dst=dayStatus(s,i,dayNums,yr,mn);
+          if(dst==='no-matriculado') return;
+          map[s.rut].act++;
+          if(s.dias[i]) map[s.rut].pres++;
+        });
       });
     });
-    const pctG=totalStu?totalPct/totalStu:0;
+
+    // Per-course stats
+    const students=Object.values(map).filter(s=>s.act>0);
+    let esp=0,rei=0,gra=0,cri=0,pctSum=0;
+    students.forEach(s=>{
+      const p=s.act>0?s.pres/s.act:0;
+      pctSum+=p;
+      if(p>=0.90)esp++; else if(p>=0.85)rei++; else if(p>=0.50)gra++; else cri++;
+    });
+    courseData[course]={students,totalDays:courseDays,avgPct:students.length?pctSum/students.length:0,esp,rei,gra,cri};
+  });
+
+  // Admin global summary bar
+  let summaryHtml='';
+  if(isAdmin()) {
+    let gPct=0,gStu=0,gEsp=0,gRei=0,gGra=0,gCri=0;
+    activeCourses.forEach(c=>{
+      const cd=courseData[c];
+      gStu+=cd.students.length; gEsp+=cd.esp; gRei+=cd.rei; gGra+=cd.gra; gCri+=cd.cri;
+      cd.students.forEach(s=>{ gPct+=(s.act>0?s.pres/s.act:0); });
+    });
+    const pctG=gStu?gPct/gStu:0;
     summaryHtml=`<div class="stats" style="margin-bottom:16px">
-      <div class="st"><div class="sn">${totalStu}</div><div class="sl">Total alumnos</div></div>
+      <div class="st"><div class="sn">${gStu}</div><div class="sl">Total alumnos</div></div>
       <div class="st"><div class="sn ${pctG>=0.85?'ok':pctG>=0.70?'warn':'bad'}">${(pctG*100).toFixed(1)}%</div><div class="sl">Promedio general</div></div>
-      <div class="st"><div class="sn ok">${totEsp}</div><div class="sl">Esperada ≥90%</div></div>
-      <div class="st"><div class="sn acc">${totRei}</div><div class="sl">Reiterada ≥85%</div></div>
-      <div class="st"><div class="sn warn">${totGra}</div><div class="sl">Grave ≥50%</div></div>
-      <div class="st"><div class="sn bad">${totCri}</div><div class="sl">Crítica &lt;50%</div></div>
+      <div class="st"><div class="sn ok">${gEsp}</div><div class="sl">Esperada ≥90%</div></div>
+      <div class="st"><div class="sn acc">${gRei}</div><div class="sl">Reiterada ≥85%</div></div>
+      <div class="st"><div class="sn warn">${gGra}</div><div class="sl">Grave ≥50%</div></div>
+      <div class="st"><div class="sn bad">${gCri}</div><div class="sl">Crítica &lt;50%</div></div>
     </div>`;
   }
 
-  const courseSections = activeCourses.map(c=>{
-    const data=db[curMonth][c];
-    const headers=data.headers||[];
-    const dayNums=data.dayNums||headers.map((_,i)=>i+1);
-    const bs=new Set(data.blocked||[]);
-    const elIdx=headers.map((_,i)=>i).filter(i=>{
-      if(bs.has(i)) return false;
-      return new Date(yr,mn-1,dayNums[i]||i+1)<=today;
+  const courseSections=activeCourses.map(course=>{
+    const {students,totalDays,avgPct,esp,rei,gra,cri}=courseData[course];
+    const sorted=[...students].sort((a,b)=>{
+      const pa=a.act>0?a.pres/a.act:0, pb=b.act>0?b.pres/b.act:0;
+      return pb-pa;
     });
-    const students=data.students||[];
-
-    const rows=[...students.map((s,si)=>{
-      const valEl=elIdx.filter(i=>dayStatus(s,i,dayNums,yr,mn)!=='no-matriculado');
-      const pr=valEl.filter(i=>s.dias[i]).length;
-      const aus=valEl.length-pr;
-      const p=valEl.length>0?pr/valEl.length:0;
-      return {s,pr,aus,p};
-    })].sort((a,b)=>b.p-a.p);
-
-    const courseAvg=rows.length?rows.reduce((a,r)=>a+r.p,0)/rows.length:0;
-    const tbRows=rows.map(({s,pr,aus,p},rank)=>{
+    const tbRows=sorted.map(({nombre,rut,pres,act},rank)=>{
+      const p=act>0?pres/act:0;
+      const aus=act-pres;
       const est=estado(p);
       return `<tr>
         <td style="text-align:center;color:var(--ink3);font-size:10px;width:24px">${rank+1}</td>
-        <td class="nc">${s.nombre}${s.fecha_ingreso?` <span style="font-size:9px;background:var(--as);color:var(--acc);padding:1px 5px;border-radius:8px;font-weight:600">desde ${s.fecha_ingreso.split('-').reverse().slice(0,2).join('/')}</span>`:''}</td>
-        <td class="rc">${s.rut}</td>
-        <td style="text-align:center;font-weight:700;color:var(--grn);font-size:11px">${pr}</td>
+        <td class="nc">${nombre}</td>
+        <td class="rc">${rut}</td>
+        <td style="text-align:center;font-weight:700;color:var(--grn);font-size:11px">${pres}</td>
         <td style="text-align:center;font-weight:700;color:var(--red);font-size:11px">${aus}</td>
+        <td style="text-align:center;color:var(--ink3);font-size:10px">${act}</td>
         <td class="pc" style="color:${pColor(p)};font-weight:700;font-size:12px">${(p*100).toFixed(1)}%</td>
         <td style="text-align:center"><span class="eb ${est.c}">${est.l}</span></td>
       </tr>`;
     }).join('');
 
     return `<div style="margin-bottom:24px">
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--as);color:var(--acc);border-radius:var(--r) var(--r) 0 0;border:1px solid var(--rule)">
-        <span style="font-weight:700;font-size:13px">${c}</span>
-        <span style="color:var(--ink3);font-size:11px">${students.length} alumnos</span>
-        <span style="margin-left:auto;font-weight:700;font-size:12px;color:${pColor(courseAvg)}">${(courseAvg*100).toFixed(1)}% promedio</span>
-        <span><span class="eb ${estado(courseAvg).c}">${estado(courseAvg).l}</span></span>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--as);border-radius:var(--r) var(--r) 0 0;border:1px solid var(--rule)">
+        <span style="font-weight:700;font-size:13px;color:var(--acc)">${course}</span>
+        <span style="color:var(--ink3);font-size:11px">${students.length} alumnos · ${totalDays} días hábiles</span>
+        <span style="margin-left:auto;font-weight:700;font-size:12px;color:${pColor(avgPct)}">${(avgPct*100).toFixed(1)}%</span>
+        <span><span class="eb ${estado(avgPct).c}">${estado(avgPct).l}</span></span>
       </div>
-      <div class="tw">
+      <div style="display:flex;gap:0;border:1px solid var(--rule);border-top:none;border-radius:0 0 var(--r) var(--r);overflow:hidden;margin-bottom:0">
+        <div style="flex:1;padding:6px 10px;text-align:center;background:var(--gs);font-size:10px"><div style="font-weight:700;color:var(--grn)">${esp}</div><div style="color:var(--ink3)">Esperada</div></div>
+        <div style="flex:1;padding:6px 10px;text-align:center;background:var(--as);font-size:10px"><div style="font-weight:700;color:var(--acc)">${rei}</div><div style="color:var(--ink3)">Reiterada</div></div>
+        <div style="flex:1;padding:6px 10px;text-align:center;background:var(--ambs);font-size:10px"><div style="font-weight:700;color:var(--amb)">${gra}</div><div style="color:var(--ink3)">Grave</div></div>
+        <div style="flex:1;padding:6px 10px;text-align:center;background:var(--rs);font-size:10px"><div style="font-weight:700;color:var(--red)">${cri}</div><div style="color:var(--ink3)">Crítica</div></div>
+      </div>
+      <div class="tw" style="margin-top:0">
         <table>
           <thead><tr>
             <th style="width:24px">#</th>
             <th class="tl" style="min-width:220px">Nombre</th>
             <th class="rh">RUT</th>
-            <th title="Días presentes">✓</th>
-            <th title="Días ausentes">✗</th>
-            <th>% Asist.</th>
+            <th title="Días presentes">✓ Pres.</th>
+            <th title="Días ausentes">✗ Aus.</th>
+            <th title="Días hábiles cursados">Días</th>
+            <th>% Acum.</th>
             <th>Estado</th>
           </tr></thead>
           <tbody>${tbRows}</tbody>
