@@ -117,6 +117,8 @@ td.rc::after{content:'';position:absolute;right:0;top:0;bottom:0;width:1px;backg
 tr:nth-child(odd) td.nc,tr:nth-child(odd) td.rc{background:#fff}
 tr:nth-child(even) td.nc,tr:nth-child(even) td.rc{background:#FAFAFA}
 tr:hover td{background:#F0F4FF!important}
+td.col-hl{background:#F0F4FF!important}
+tr:hover td.col-hl{background:#C7D3FF!important}
 td.dc{text-align:center;padding:3px 3px;cursor:pointer;user-select:none}
 td.dc:hover{background:#E8EDFF}
 td.dc.blk{background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 3px,#F5F3FF 3px,#F5F3FF 6px)!important;cursor:not-allowed}
@@ -2321,6 +2323,27 @@ loadDB().then(()=>{
   renderAll();
   startRealtimeSync(); // escucha cambios en tiempo real desde Firebase
 });
+
+// ── MIRA CRUZADA (crosshair) en tabla ────────────────────────────────────────
+(function(){
+  let lastCol = -1;
+  function clearCol() {
+    document.querySelectorAll('td.col-hl').forEach(c=>c.classList.remove('col-hl'));
+    lastCol = -1;
+  }
+  document.getElementById('main').addEventListener('mouseover', e=>{
+    const td = e.target.closest('td');
+    if(!td){ clearCol(); return; }
+    const table = td.closest('table');
+    if(!table){ clearCol(); return; }
+    const col = td.cellIndex;
+    if(col === lastCol) return;
+    clearCol();
+    lastCol = col;
+    table.querySelectorAll(`td:nth-child(${col+1})`).forEach(c=>c.classList.add('col-hl'));
+  });
+  document.getElementById('main').addEventListener('mouseleave', clearCol);
+})();
 </script>
 </body>
 </html>
