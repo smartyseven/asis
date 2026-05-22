@@ -1231,7 +1231,7 @@ function killCharts() {
 
 // ── SECTION SWITCHING ─────────────────────────────────────────────────────────
 function setSection(s) {
-  if(isDocente() && s!=='mes' && s!=='listado') return;
+  if((isDocente()||isInsp()) && s!=='mes' && s!=='listado') return;
   curSection=s; renderMain();
 }
 function setView(v) { curView=v; renderMain(); }
@@ -1250,7 +1250,7 @@ function renderMain() {
   const label=mLabel(curMonth);
 
   // Docentes: solo secciones permitidas
-  if(isDocente() && curSection!=='mes' && curSection!=='listado') curSection='mes';
+  if((isDocente()||isInsp()) && curSection!=='mes' && curSection!=='listado') curSection='mes';
 
   // Toolbar (always shown)
   const toolbar=`
@@ -1258,7 +1258,7 @@ function renderMain() {
       <div class="ttl">${label} · ${curCourse}${editMode?'':' <span style="font-size:9px;background:var(--rule2);color:var(--ink3);padding:2px 7px;border-radius:10px;font-weight:400;vertical-align:middle">👁 solo lectura</span>'}</div>
       <div class="vt">
         <button class="vb${curSection==='mes'?' on':''}" onclick="setSection('mes')">📋 Mes</button>
-        ${!isDocente()?`
+        ${(!isDocente()&&!isInsp())?`
         <button class="vb${curSection==='acumulado'?' on':''}" onclick="setSection('acumulado')">📊 Acumulado</button>
         <button class="vb${curSection==='honor'?' on':''}"     onclick="setSection('honor')">🏅 Honor</button>
         ${(isAdmin()&&editMode)||isReadOnly()?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
@@ -1278,7 +1278,7 @@ function renderMain() {
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar
       </button>`:''}
       `:''}
-      ${canEdit()?`<button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Modo edición activo':(isMonthLocked(curMonth)?'Mes bloqueado 🔒':'Activar modo edición')}">
+      ${isAdmin()?`<button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Modo edición activo':(isMonthLocked(curMonth)?'Mes bloqueado 🔒':'Activar modo edición')}">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         ⚙️${editMode?' Editar':''}
       </button>`:''}
@@ -1289,7 +1289,7 @@ function renderMain() {
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
         Claves
       </button>`:''}
-      ${canEdit()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
+      ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Salir edición
       </button>`:''}
@@ -1909,7 +1909,9 @@ function drawCharts(data) {
 
 // ── STUDENT ACTIONS ───────────────────────────────────────────────────────────
 function toggleDay(si,di) {
-  if(!editMode){ toast('Activa el modo edición ⚙️ para modificar','err'); return; }
+  if(isInsp()) {
+    if(isMonthLocked(curMonth)){ toast('Mes bloqueado 🔒 — el administrador debe habilitarlo','err'); return; }
+  } else if(!editMode){ toast('Activa el modo edición ⚙️ para modificar','err'); return; }
   const d=db[curMonth][curCourse];
   if((d.blocked||[]).includes(di)) return;
   // Block pre-enrollment days
