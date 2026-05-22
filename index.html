@@ -436,11 +436,11 @@ tfoot td.tl{text-align:left}
 <script>
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 (function(){
-  // Ocultar la app hasta que haya sesión
   document.querySelector('.top') && (document.querySelector('.top').style.display='none');
   document.querySelector('.app') && (document.querySelector('.app').style.display='none');
-  // Restaurar si ya estaba logueado en esta sesión
-  if(sessionStorage.getItem('emag_auth')==='1'){
+  const saved = sessionStorage.getItem('emag_auth');
+  if(saved && USERS[saved]) {
+    currentUser = { user: saved, ...USERS[saved] };
     document.getElementById('landing').classList.add('hidden');
     document.querySelector('.top').style.display='';
     document.querySelector('.app').style.display='';
@@ -450,11 +450,13 @@ tfoot td.tl{text-align:left}
 })();
 
 function doLogin() {
-  const u = document.getElementById('ld-user').value.trim();
-  const p = document.getElementById('ld-pass').value;
+  const u   = document.getElementById('ld-user').value.trim();
+  const p   = document.getElementById('ld-pass').value;
   const err = document.getElementById('ld-err');
-  if(u === 'emag' && p === 'emag@4614') {
-    sessionStorage.setItem('emag_auth','1');
+  const usr = USERS[u];
+  if(usr && p === usr.pass) {
+    currentUser = { user: u, ...usr };
+    sessionStorage.setItem('emag_auth', u);
     document.getElementById('landing').classList.add('hidden');
     document.querySelector('.top').style.display='';
     document.querySelector('.app').style.display='';
@@ -467,7 +469,9 @@ function doLogin() {
 }
 
 function doLogout() {
+  currentUser = null;
   sessionStorage.removeItem('emag_auth');
+  editMode = false;
   document.getElementById('landing').classList.remove('hidden');
   document.querySelector('.top').style.display='none';
   document.querySelector('.app').style.display='none';
@@ -542,6 +546,23 @@ const EDIT_PW  = '4614asis';
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let db          = {};
+// ── USUARIOS Y ROLES ──────────────────────────────────────────────────────────
+const USERS = {
+  'emag': { pass:'emag@4614',  courses:null,          role:'admin'   },
+  'NT':   { pass:'valecr0',    courses:['NT1','NT2'], role:'docente' },
+  '1':    { pass:'cint171',    courses:['1° Básico'], role:'docente' },
+  '2':    { pass:'patymu2',    courses:['2° Básico'], role:'docente' },
+  '3':    { pass:'katiuch3',   courses:['3° Básico'], role:'docente' },
+  '4':    { pass:'cinew4',     courses:['4° Básico'], role:'docente' },
+  '5':    { pass:'angebepe5',  courses:['5° Básico'], role:'docente' },
+  '6':    { pass:'alicoro6',   courses:['6° Básico'], role:'docente' },
+  '7':    { pass:'pipedt7',    courses:['7° Básico'], role:'docente' },
+  '8':    { pass:'karing8',    courses:['8° Básico'], role:'docente' },
+};
+let currentUser = null;
+function isAdmin()        { return currentUser?.role === 'admin'; }
+function allowedCourses() { return isAdmin() ? COURSES : (currentUser?.courses || []); }
+
 let editMode    = false;  // unlocked by password
 let activeYear  = 2026;
 let curMonth    = null;
@@ -756,7 +777,7 @@ function csBar() {
     <span class="csbar-sep">·</span>
     <span>${actToday} días transcurridos${actToday<totalDays?' de '+totalDays:''}</span>
     <span class="csbar-sep">·</span>
-    <span>% del curso: <strong class="csbar-pct" style="color:${pColor(pct)}">${Math.round(pct*100)}%</strong></span>
+    <span>% del curso: <strong class="csbar-pct" style="color:${pColor(pct)}">${(pct*100).toFixed(1)}%</strong></span>
     <span><span class="eb ${est.c}">${est.l}</span></span>
   </div>`;
 }
@@ -1076,7 +1097,9 @@ function renderTabs() {
 
 function renderCourses() {
   if(!curMonth){document.getElementById('clist').innerHTML='';return;}
+  const allowed=allowedCourses();
   document.getElementById('clist').innerHTML=COURSES.map(c=>{
+    if(!allowed.includes(c)) return '';
     if(!db[curMonth]?.[c]) return '';
     const n=db[curMonth][c].students?.length||0;
     return `<div class="ct${curCourse===c?' on':''}" onclick="selectCourse('${c}')">
@@ -1086,15 +1109,18 @@ function renderCourses() {
 
 function selectMonth(key) {
   curMonth=key;
-  if(!curCourse||!db[key]?.[curCourse]) curCourse=COURSES.find(c=>db[key]?.[c])||null;
+  const allowed=allowedCourses();
+  if(!curCourse||!db[key]?.[curCourse]||!allowed.includes(curCourse))
+    curCourse=allowed.find(c=>db[key]?.[c])||null;
   renderAll();
 }
 function selectCourse(c) { curCourse=c;renderCourses();renderMain(); }
 function changeYear(y) {
   activeYear=y;
   document.getElementById('yr-lbl').textContent='Asistencia '+y;
+  const allowed=allowedCourses();
   curMonth=monthsForYear(y).find(m=>db[m.name])?.name||null;
-  curCourse=curMonth?COURSES.find(c=>db[curMonth]?.[c])||null:null;
+  curCourse=curMonth?allowed.find(c=>db[curMonth]?.[c])||null:null;
   renderAll();
 }
 
@@ -1120,37 +1146,40 @@ function renderMain() {
 
   const label=mLabel(curMonth);
 
+  // Docentes solo pueden ver tabla del mes
+  if(!isAdmin()) { curSection='mes'; curView='tabla'; }
+
   // Toolbar (always shown)
   const toolbar=`
     <div class="tbar">
       <div class="ttl">${label} · ${curCourse}${editMode?'':' <span style="font-size:9px;background:var(--rule2);color:var(--ink3);padding:2px 7px;border-radius:10px;font-weight:400;vertical-align:middle">👁 solo lectura</span>'}</div>
-      <div class="vt">
+      ${isAdmin()?`<div class="vt">
         <button class="vb${curSection==='mes'?' on':''}"          onclick="setSection('mes')">📋 Mes</button>
         <button class="vb${curSection==='acumulado'?' on':''}"    onclick="setSection('acumulado')">📊 Acumulado</button>
         <button class="vb${curSection==='honor'?' on':''}"        onclick="setSection('honor')">🏅 Honor</button>
         ${editMode?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
-      </div>
+      </div>`:''}
       ${curSection==='mes'?`
-      <div class="vt">
+      ${isAdmin()?`<div class="vt">
         <button class="vb${curView==='tabla'?' on':''}"   onclick="setView('tabla')">Tabla</button>
         <button class="vb${curView==='charts'?' on':''}"  onclick="setView('charts')">Gráficos</button>
-      </div>
-      ${editMode?`<button class="btn b-o no-print" onclick="markAllPresent()" title="Marcar todos presentes" style="color:var(--grn);border-color:rgba(43,138,62,.3)">
+      </div>`:''}
+      ${isAdmin()&&editMode?`<button class="btn b-o no-print" onclick="markAllPresent()" title="Marcar todos presentes" style="color:var(--grn);border-color:rgba(43,138,62,.3)">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.5"><polyline points="20 6 9 17 4 12"/></svg>
         Todos presentes
       </button>`:''}
-      ${editMode?`<button class="btn b-o no-print" onclick="toggleAF()">
+      ${isAdmin()&&editMode?`<button class="btn b-o no-print" onclick="toggleAF()">
         <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar
       </button>`:''}
       `:''}
-      <button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Panel de edición':'Activar modo edición'}">
+      ${isAdmin()?`<button class="btn ${editMode?'b-a':'b-o'} no-print" onclick="openGear()" style="flex-shrink:0" title="${editMode?'Panel de edición':'Activar modo edición'}">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         ⚙️${editMode?' Editar':''}
-      </button>
-      ${editMode?`<button class="btn b-o no-print" onclick="openReportModal()" style="flex-shrink:0" title="Generar informe Word — Inspectoría General">
+      </button>`:''}
+      ${isAdmin()&&editMode?`<button class="btn b-o no-print" onclick="openReportModal()" style="flex-shrink:0" title="Generar informe Word — Inspectoría General">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       </button>`:''}
-      ${editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
+      ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Salir edición
       </button>`:''}
@@ -1205,7 +1234,7 @@ function renderMes(data,label) {
   // Stats bar
   const statsBar=`<div class="stats">
     <div class="st"><div class="sn">${students.length}</div><div class="sl">Matrícula</div></div>
-    <div class="st"><div id="sb-pct" class="sn ${pc}">${Math.round(stElapsed.pct*100)}%</div>
+    <div class="st"><div id="sb-pct" class="sn ${pc}">${(stElapsed.pct*100).toFixed(1)}%</div>
       <div class="sl">${actElapsed} días${actElapsed<totalMonthDays?' de '+totalMonthDays:''}</div></div>
     <div class="st"><div id="sb-esp" class="sn ok">${stElapsed.esp}</div><div class="sl">Esperada ≥90%</div></div>
     <div class="st"><div id="sb-rei" class="sn acc">${stElapsed.rei}</div><div class="sl">Reiterada ≥85%</div></div>
@@ -1736,7 +1765,7 @@ function updateStatsBar() {
   const pct=students.length?pctSum/students.length:0;
   const pc=pct>=0.90?'ok':pct>=0.85?'warn':'bad';
   const upd=(id,val,cls)=>{const e=document.getElementById(id);if(e){e.textContent=val;if(cls)e.className='sn '+cls;}};
-  upd('sb-pct',Math.round(pct*100)+'%',pc);
+  upd('sb-pct',(pct*100).toFixed(1)+'%',pc);
   upd('sb-esp',esp,'ok');
   upd('sb-rei',rei,'acc');
   upd('sb-gra',gra,'warn');
