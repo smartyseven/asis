@@ -2817,20 +2817,20 @@ loadDB().then(()=>{
   startRealtimeSync(); // escucha cambios en tiempo real desde Firebase
 });
 
-// ── ATAJO TECLADO: Shift + ArrowUp + P → abre modal de informe ───────────────
+// ── ATAJO TECLADO: ↑ + P simultáneas → abre modal de informe ────────────────
 (function(){
-  let arrowUpHeld = false;
+  const held = new Set();
   document.addEventListener('keydown', e=>{
-    if(e.key === 'ArrowUp') arrowUpHeld = true;
-    if(e.shiftKey && arrowUpHeld && e.key === 'p') {
+    if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+    held.add(e.key);
+    if(held.has('ArrowUp') && (held.has('p') || held.has('P'))) {
       e.preventDefault();
+      held.clear();
       if(!isAdmin()) return;
       openReportModal();
     }
   });
-  document.addEventListener('keyup', e=>{
-    if(e.key === 'ArrowUp') arrowUpHeld = false;
-  });
+  document.addEventListener('keyup', e=>{ held.delete(e.key); });
 })();
 
 // ── MIRA CRUZADA (crosshair) en tabla ────────────────────────────────────────
