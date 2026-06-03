@@ -1399,7 +1399,10 @@ function renderMain() {
 
 // ── SECCIÓN MES ───────────────────────────────────────────────────────────────
 function renderMes(data,label) {
-  const students=data.students||[];
+  // Ensure all students have a permanent list number
+  if(isAdmin()||isInsp()) ensureNumLista(curCourse);
+  const origStudents=data.students||[];
+  const students=origStudents.slice().sort((a,b)=>(a.num_lista||999)-(b.num_lista||999));
   const headers=data.headers||[];
   const dayNums=data.dayNums||headers.map((_,i)=>i+1);
   const blocked=data.blocked||[];
@@ -1476,7 +1479,9 @@ function renderMes(data,label) {
     </th>`;
   }).join('');
 
-  const rows=students.map((s,si)=>{
+  const rows=students.map((s)=>{
+    // Use original index for toggleDay/editStudentClick (they index into data.students)
+    const si=origStudents.findIndex(os=>os.rut===s.rut);
     const validEl=elapsedIdx.filter(i=>!excluido(dayStatus(s,i,dayNums,yr2,mn2)));
     const pr=validEl.filter(i=>s.dias[i]).length;
     const aus=validEl.length-pr;
@@ -1495,6 +1500,7 @@ function renderMes(data,label) {
       </td>`;
     }).join('');
     return `<tr>
+      <td style="text-align:center;font-family:var(--fd);font-size:11px;font-weight:700;color:${s.fecha_retiro?'var(--red)':'var(--ink3)'};min-width:28px;width:28px;padding:2px 3px">${s.num_lista||'—'}</td>
       <td class="nc"${editMode?` onclick="editStudentClick(${si})" title="Clic para editar" style="cursor:pointer"`:''}>
         ${editMode?`<svg viewBox="0 0 24 24" style="width:10px;height:10px;stroke:var(--acc);fill:none;stroke-width:2;opacity:.5;margin-right:3px;vertical-align:middle;flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`:''}${s.nombre}${s.fecha_ingreso?` <span style="font-size:9px;background:var(--as);color:var(--acc);padding:1px 5px;border-radius:8px;font-weight:600">desde ${s.fecha_ingreso.split('-').reverse().slice(0,2).join('/')}</span>`:''}${s.fecha_retiro?` <span style="font-size:9px;background:var(--rs);color:var(--red);padding:1px 5px;border-radius:8px;font-weight:600">retiro ${s.fecha_retiro.split('-').reverse().slice(0,2).join('/')}</span>`:''}
       </td>
@@ -1505,7 +1511,7 @@ function renderMes(data,label) {
       <td data-pct="${si}" class="pc" style="color:${pColor(p)}">${Math.round(p*100)}%</td>
       <td data-est="${si}" style="font-size:10px"><span class="eb ${est.c}">${est.l}</span></td>
       <td class="no-print" style="padding:2px 5px;white-space:nowrap">
-        
+
       </td>
     </tr>`;
   }).join('');
@@ -1536,6 +1542,7 @@ function renderMes(data,label) {
     <div class="tw">
       <table>
         <thead><tr>
+          <th style="min-width:28px;width:28px;text-align:center;font-size:9px;color:var(--ink3)" title="Nº de lista">#</th>
           <th class="tl" style="min-width:220px;width:220px">Nombre</th>
           <th class="rh" style="min-width:80px">RUT</th>
           ${ths}
@@ -1546,6 +1553,7 @@ function renderMes(data,label) {
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr>
+          <td></td>
           <td class="tl" colspan="2" style="color:var(--ink3)">% del día</td>
           ${totRow}<td colspan="5"></td>
         </tr></tfoot>
@@ -1558,6 +1566,8 @@ function renderListado() {
   const allowed  = allowedCourses();
   const today    = new Date(); today.setHours(23,59,59,999);
   const allMonths= monthsForYear(activeYear).map(m=>m.name);
+  // Ensure num_lista for all accessible courses
+  if(isAdmin()||isInsp()) allowed.forEach(c=>ensureNumLista(c));
 
   // Build per-course cumulative student map
   // courseData[course] = { students: {rut→{nombre,pres,act}}, totalDays, avgPct, esp,rei,gra,cri }
@@ -1578,9 +1588,10 @@ function renderListado() {
       const yr     = parseInt(parts[parts.length-1]);
       const mn     = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
 
-      // Ensure all students exist in map
+      // Ensure all students exist in map (preserve num_lista)
       (data.students||[]).forEach(s=>{
-        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0};
+        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0,num_lista:s.num_lista||null};
+        else if(s.num_lista && !map[s.rut].num_lista) map[s.rut].num_lista=s.num_lista;
       });
 
       // Count elapsed days for this month
@@ -1632,16 +1643,13 @@ function renderListado() {
 
   const courseSections=activeCourses.map(course=>{
     const {students,totalDays,avgPct,esp,rei,gra,cri}=courseData[course];
-    const sorted=[...students].sort((a,b)=>{
-      const pa=a.act>0?a.pres/a.act:0, pb=b.act>0?b.pres/b.act:0;
-      return pb-pa;
-    });
-    const tbRows=sorted.map(({nombre,rut,pres,act},rank)=>{
+    const sorted=[...students].sort((a,b)=>(a.num_lista||999)-(b.num_lista||999));
+    const tbRows=sorted.map(({nombre,rut,pres,act,num_lista})=>{
       const p=act>0?pres/act:0;
       const aus=act-pres;
       const est=estado(p);
       return `<tr>
-        <td style="text-align:center;color:var(--ink3);font-size:10px;width:24px">${rank+1}</td>
+        <td style="text-align:center;font-family:var(--fd);font-size:11px;font-weight:700;color:var(--ink3);width:28px">${num_lista||'—'}</td>
         <td class="nc">${nombre}</td>
         <td class="rc">${rut}</td>
         <td style="text-align:center;font-weight:700;color:var(--grn);font-size:11px">${pres}</td>
@@ -2143,6 +2151,53 @@ function toggleAF() {
   const f=document.getElementById('af');
   if(f){f.classList.toggle('show');if(f.classList.contains('show'))setTimeout(()=>document.getElementById('nrut').focus(),60);}
 }
+// ── NÚMERO DE LISTA ──────────────────────────────────────────────────────────
+// Returns the next available list number for a course (max existing + 1)
+function getNextNumLista(course) {
+  let max = 0;
+  monthsForYear(activeYear).forEach(m=>{
+    (db[m.name]?.[course]?.students||[]).forEach(s=>{
+      if(s.num_lista && s.num_lista > max) max = s.num_lista;
+    });
+  });
+  return max + 1;
+}
+
+// Migration: assigns num_lista to students that don't have one yet.
+// Builds a RUT→num map using the order from the earliest month, then
+// propagates to all months. Returns true if any change was saved.
+function ensureNumLista(course) {
+  const allMonths = monthsForYear(activeYear).filter(m=>db[m.name]?.[course]);
+  if(!allMonths.length) return;
+
+  // Build RUT→num from the first month that has data (canonical order)
+  const rutMap = {};
+  let maxExisting = 0;
+  // First pass: collect already-assigned numbers
+  allMonths.forEach(m=>{
+    (db[m.name][course].students||[]).forEach(s=>{
+      if(s.num_lista) {
+        if(!rutMap[s.rut]) rutMap[s.rut] = s.num_lista;
+        if(s.num_lista > maxExisting) maxExisting = s.num_lista;
+      }
+    });
+  });
+  // Second pass: assign missing numbers in canonical order (first month)
+  let counter = maxExisting;
+  (db[allMonths[0].name][course].students||[]).forEach(s=>{
+    if(!rutMap[s.rut]) { counter++; rutMap[s.rut] = counter; }
+  });
+  // Third pass: propagate to all months
+  let changed = false;
+  allMonths.forEach(m=>{
+    (db[m.name][course].students||[]).forEach(s=>{
+      const n = rutMap[s.rut];
+      if(n && s.num_lista !== n) { s.num_lista = n; changed = true; }
+    });
+  });
+  if(changed) saveDB();
+}
+
 function addStu() {
   if(!editMode){ toast('Activa el modo edición ⚙️','err'); return; }
   const rut=document.getElementById('nrut').value.trim();
@@ -2151,6 +2206,7 @@ function addStu() {
   const fecha=document.getElementById('nfecha')?.value||'';
   const d=db[curMonth][curCourse];
   if(d.students.find(s=>s.rut===rut)){toast('Ese RUT ya existe','err');return;}
+  const numLista = getNextNumLista(curCourse);
   // Add to ALL existing months with empty dias (not yet counted)
   // but only if they don't already have this student
   monthsForYear(activeYear).forEach(m=>{
@@ -2158,11 +2214,12 @@ function addStu() {
     if(db[m.name][curCourse].students.find(s=>s.rut===rut)) return;
     db[m.name][curCourse].students.push({
       rut, nombre:nom,
+      num_lista: numLista,
       fecha_ingreso: fecha||'',
       dias: Array(db[m.name][curCourse].headers.length).fill(false)
     });
   });
-  saveDB();renderCourses();renderMain();toast('Alumno agregado en todos los meses ✓');
+  saveDB();renderCourses();renderMain();toast(`Alumno agregado — Nº ${numLista} de lista ✓`);
 }
 function removeStu(si) {
   if(!editMode){ toast('Activa el modo edición ⚙️','err'); return; }
