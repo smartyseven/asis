@@ -129,6 +129,7 @@ td.dc:hover{background:#E8EDFF}
 td.dc.blk{background:repeating-linear-gradient(45deg,#EDE9FE,#EDE9FE 3px,#F5F3FF 3px,#F5F3FF 6px)!important;cursor:not-allowed}
 td.dc.nmat{background:repeating-linear-gradient(45deg,#E4E4E7,#E4E4E7 2px,#F4F4F5 2px,#F4F4F5 5px)!important;cursor:not-allowed;opacity:.6}
 td.dc.ret{background:repeating-linear-gradient(45deg,#FFE0E0,#FFE0E0 2px,#FFF5F5 2px,#FFF5F5 5px)!important;cursor:not-allowed;opacity:.65}
+td.dc.fut{background:#FAFAFA!important;cursor:default;opacity:.5}
 .pr{color:var(--grn);font-size:13px;line-height:1;font-weight:700}
 .ab{color:#C48A2A;font-size:13px;line-height:1;font-weight:700}
 td.pc{text-align:center;font-size:11.5px;font-weight:700;letter-spacing:-.02em}
@@ -535,19 +536,12 @@ tfoot td.tl{text-align:left}
 
 <script>
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
+// Hide app chrome immediately to prevent flash (USERS not yet declared here)
 (function(){
   document.querySelector('.top') && (document.querySelector('.top').style.display='none');
   document.querySelector('.app') && (document.querySelector('.app').style.display='none');
-  const saved = sessionStorage.getItem('emag_auth');
-  if(saved && USERS[saved]) {
-    currentUser = { user: saved, ...USERS[saved] };
-    document.getElementById('landing').classList.add('hidden');
-    document.querySelector('.top').style.display='';
-    document.querySelector('.app').style.display='';
-  } else {
-    setTimeout(()=>document.getElementById('ld-user').focus(), 150);
-  }
 })();
+// Session restore runs after USERS/currentUser are declared (see initSession below)
 
 function doLogin() {
   const u   = document.getElementById('ld-user').value.trim();
@@ -670,6 +664,18 @@ const USERS = {
   '8':        { pass:'karing8',    courses:['8° Básico'], role:'docente'  },
 };
 let currentUser = null;
+// ── SESSION RESTORE (safe: USERS and currentUser now declared) ─────────────────
+(function initSession(){
+  const saved = sessionStorage.getItem('emag_auth');
+  if(saved && USERS[saved]) {
+    currentUser = { user: saved, ...USERS[saved] };
+    document.getElementById('landing').classList.add('hidden');
+    document.querySelector('.top').style.display='';
+    document.querySelector('.app').style.display='';
+  } else {
+    setTimeout(()=>document.getElementById('ld-user').focus(), 150);
+  }
+})();
 function isAdmin()        { return currentUser?.role === 'admin'; }
 function isInsp()         { return currentUser?.role === 'insp'; }
 function isDocente()      { return currentUser?.role === 'docente'; }
@@ -992,6 +998,19 @@ function askConfirm(title,msg,cb,lbl='Confirmar') {
 function runConfirm() { if(cfCb){cfCb();cfCb=null;} closeOv('ov-confirm'); }
 
 // ── MODAL CLAVES ──────────────────────────────────────────────────────────────
+function downloadBackup() {
+  if(!isAdmin()) return;
+  const date = new Date().toISOString().slice(0,10);
+  const blob = new Blob([JSON.stringify(db, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `asistencia-backup-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Backup descargado ✓','ok');
+}
+
 function openCredentials() {
   if(!isAdmin()) return;
   document.getElementById('cred-pass-step').style.display='block';
@@ -1359,6 +1378,10 @@ function renderMain() {
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
         Claves
       </button>`:''}
+      ${isAdmin()?`<button class="btn b-o no-print" onclick="downloadBackup()" style="flex-shrink:0" title="Descargar copia de seguridad en JSON">
+        <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Backup
+      </button>`:''}
       ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         Salir edición
@@ -1465,9 +1488,10 @@ function renderMes(data,label) {
       const dst=dayStatus(s,di,dayNums,yr2,mn2);
       const isNoMat=dst==='no-matriculado';
       const isRet=dst==='retirado';
-      const isBlocked=ib||isNoMat||isRet;
-      return `<td class="dc${ib?' blk':isNoMat?' nmat':isRet?' ret':''}${isFri?' week-sep':''}" data-si="${si}" data-di="${di}"${isBlocked?'':` onclick="toggleDay(${si},${di})"`}>
-        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':isNoMat?'<span style="color:#aaa;font-size:9px;line-height:1">·</span>':isRet?'<span style="color:#f5a5a5;font-size:9px">✕</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
+      const isFuture=!elapsedIdx.includes(di);
+      const isBlocked=ib||isNoMat||isRet||isFuture;
+      return `<td class="dc${ib?' blk':isNoMat?' nmat':isRet?' ret':isFuture?' fut':''}${isFri?' week-sep':''}" data-si="${si}" data-di="${di}"${isBlocked?'':` onclick="toggleDay(${si},${di})"`}>
+        ${ib?'<span style="color:#c8aaee;font-size:10px">—</span>':isNoMat?'<span style="color:#aaa;font-size:9px;line-height:1">·</span>':isRet?'<span style="color:#f5a5a5;font-size:9px">✕</span>':isFuture?'<span style="color:#d4d4d8;font-size:8px">·</span>':`<span class="${v?'pr':'ab'}">${v?'✓':'✕'}</span>`}
       </td>`;
     }).join('');
     return `<tr>
@@ -2379,7 +2403,7 @@ function drawTendCharts() {
         legend:{display:false},
         tooltip:{
           callbacks:{
-            title:items=>[chart.data.datasets[items[0].datasetIndex].fullLabel||items[0].dataset.label],
+            title:items=>[window._tendChart?.data.datasets[items[0].datasetIndex]?.fullLabel||items[0].dataset.label],
             label:i=>` ${monthLabels[i.dataIndex]}: ${i.parsed.y}%`
           }
         }
