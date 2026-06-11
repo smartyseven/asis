@@ -2170,10 +2170,9 @@ function ensureNumLista(course) {
   const allMonths = monthsForYear(activeYear).filter(m=>db[m.name]?.[course]);
   if(!allMonths.length) return;
 
-  // Build RUT→num from the first month that has data (canonical order)
+  // Pass 1: collect all RUTs that already have a num_lista assigned
   const rutMap = {};
   let maxExisting = 0;
-  // First pass: collect already-assigned numbers
   allMonths.forEach(m=>{
     (db[m.name][course].students||[]).forEach(s=>{
       if(s.num_lista) {
@@ -2182,17 +2181,22 @@ function ensureNumLista(course) {
       }
     });
   });
-  // Second pass: assign missing numbers in canonical order (first month)
+
+  // Pass 2: assign missing numbers. Scan ALL months to catch any unassigned student.
+  // Use insertion order across months so earliest students get lowest numbers.
   let counter = maxExisting;
-  (db[allMonths[0].name][course].students||[]).forEach(s=>{
-    if(!rutMap[s.rut]) { counter++; rutMap[s.rut] = counter; }
+  allMonths.forEach(m=>{
+    (db[m.name][course].students||[]).forEach(s=>{
+      if(!rutMap[s.rut]) { counter++; rutMap[s.rut] = counter; }
+    });
   });
-  // Third pass: propagate to all months
+
+  // Pass 3: write back to all months
   let changed = false;
   allMonths.forEach(m=>{
     (db[m.name][course].students||[]).forEach(s=>{
       const n = rutMap[s.rut];
-      if(n && s.num_lista !== n) { s.num_lista = n; changed = true; }
+      if(n !== undefined && s.num_lista !== n) { s.num_lista = n; changed = true; }
     });
   });
   if(changed) saveDB();
@@ -2206,6 +2210,8 @@ function addStu() {
   const fecha=document.getElementById('nfecha')?.value||'';
   const d=db[curMonth][curCourse];
   if(d.students.find(s=>s.rut===rut)){toast('Ese RUT ya existe','err');return;}
+  // Ensure all existing students have their numbers FIRST, then get the next one
+  ensureNumLista(curCourse);
   const numLista = getNextNumLista(curCourse);
   // Add to ALL existing months with empty dias (not yet counted)
   // but only if they don't already have this student
@@ -2233,10 +2239,13 @@ function removeStu(si) {
 }
 
 // ── TENDENCIAS ───────────────────────────────────────────────────────────────
-function getTendData(course) {
+function getTendData(course, monthFilter) {
   // Get per-student % per month (only elapsed days)
+  // monthFilter: optional array of month name strings to restrict analysis
   const today=new Date(); today.setHours(23,59,59,999);
-  const allMonths=monthsForYear(activeYear).map(m=>m.name).filter(m=>db[m]?.[course]);
+  const allMonths=monthsForYear(activeYear).map(m=>m.name)
+    .filter(m=>db[m]?.[course])
+    .filter(m=>!monthFilter || monthFilter.includes(m));
   const stuMap={};
 
   allMonths.forEach(month=>{
@@ -2871,7 +2880,7 @@ async function generateReport(selectedMonthKeys) {
             ];
             const tendParagraphs=[];
             activeCourses.forEach(course=>{
-              const students=getTendData(course);
+              const students=getTendData(course, selectedMonthKeys);
               if(!students.length||students[0]?.months.length<2) return;
               const monthLabels=students[0].months.map(m=>m.month);
               // Group students
