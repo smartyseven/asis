@@ -832,7 +832,13 @@ function mLabel(key) { return key.replace(' '+activeYear,''); }
 function calcStats(students, headers, blocked, dayNums, yr, mn) {
   const bs=new Set(blocked||[]);
   const dn=dayNums||headers.map((_,i)=>i+1);
-  const act=headers.filter((_,i)=>!bs.has(i)).length;
+  const today=new Date(); today.setHours(23,59,59,999);
+  // act: non-blocked days elapsed up to today (no future days)
+  const act=headers.filter((_,i)=>{
+    if(bs.has(i)) return false;
+    if(yr&&mn){ const dt=new Date(yr,mn-1,dn[i]||i+1); if(dt>today) return false; }
+    return true;
+  }).length;
   const tot=students.length;
   if(!tot) return {pct:0,esp:0,rei:0,gra:0,cri:0,tot:0,act};
   let sum=0,esp=0,rei=0,gra=0,cri=0;
@@ -840,6 +846,7 @@ function calcStats(students, headers, blocked, dayNums, yr, mn) {
     let sPres=0,sAct=0;
     headers.forEach((_,i)=>{
       if(bs.has(i)) return;
+      if(yr&&mn){ const dt=new Date(yr,mn-1,dn[i]||i+1); if(dt>today) return; }
       const dst=(yr&&mn)?dayStatus(s,i,dn,yr,mn):(s.dias[i]?'present':'absent');
       if(excluido(dst)) return;
       sAct++;
@@ -1728,8 +1735,10 @@ function renderAcumulado() {
       totalDays++;
       (data.students||[]).forEach(s=>{
         if(!map[s.rut]) return;
+        const dst=dayStatus(s,i,dayNums,yr,mn);
+        if(excluido(dst)) return;
         map[s.rut].act++;
-        if(s.dias[i]) map[s.rut].pres++;
+        if(dst==='present') map[s.rut].pres++;
       });
     });
     // dedupe totalDays per-student (divide later)
@@ -1902,14 +1911,31 @@ function setSortCum(f) {
 // ── SECCIÓN HONOR (100% en el mes seleccionado) ───────────────────────────────
 function renderHonor(data,label) {
   const bs=new Set(data.blocked||[]);
-  const act=(data.headers||[]).filter((_,i)=>!bs.has(i)).length;
+  const today=new Date(); today.setHours(23,59,59,999);
+  const parts=curMonth.split(' ');
+  const yr=parseInt(parts[parts.length-1]);
+  const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+  const dayNums=data.dayNums||[];
+  // Elapsed non-blocked days up to today
+  const act=(data.headers||[]).filter((_,i)=>{
+    if(bs.has(i)) return false;
+    return new Date(yr,mn-1,dayNums[i]||i+1)<=today;
+  }).length;
   const sts=data.students||[];
 
-  // Only students with 100% THIS month
+  // Only students present on 100% of their enrolled elapsed days
   const perfect=sts.filter(s=>{
     if(!act) return false;
-    const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
-    return pr===act;
+    let pr=0, stuAct=0;
+    (data.headers||[]).forEach((_,i)=>{
+      if(bs.has(i)) return;
+      if(new Date(yr,mn-1,dayNums[i]||i+1)>today) return;
+      const dst=dayStatus(s,i,dayNums,yr,mn);
+      if(excluido(dst)) return;
+      stuAct++;
+      if(dst==='present') pr++;
+    });
+    return stuAct>0 && pr===stuAct;
   }).sort((a,b)=>sortHonDir*a.nombre.localeCompare(b.nombre));
 
   const rows=perfect.map((s,i)=>{
@@ -2640,6 +2666,7 @@ async function generateReport(selectedMonthKeys) {
       ? allMonths.filter(m=>selectedMonthKeys.includes(m.name))
       : allMonths;
     const today  = new Date();
+    const todayCut=new Date(); todayCut.setHours(23,59,59,999);
     const dateStr= today.toLocaleDateString('es-CL',{day:'2-digit',month:'long',year:'numeric'});
 
     const courseAgg={};
@@ -2666,6 +2693,7 @@ async function generateReport(selectedMonthKeys) {
           let pre=0,act=0;
           d.headers.forEach((_,i)=>{
             if(bs.has(i)) return;
+            if(yr&&mn){ const dt=new Date(yr,mn-1,dn[i]||i+1); if(dt>todayCut) return; }
             const dst=(yr&&mn)?dayStatus(s,i,dn,yr,mn):(s.dias[i]?'present':'absent');
             if(excluido(dst)) return; act++;
             if(dst==='present') pre++;
