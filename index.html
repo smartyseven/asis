@@ -840,8 +840,8 @@ function calcStats(students, headers, blocked, dayNums, yr, mn) {
     return true;
   }).length;
   const tot=students.length;
-  if(!tot) return {pct:0,esp:0,rei:0,gra:0,cri:0,tot:0,act};
-  let sum=0,esp=0,rei=0,gra=0,cri=0;
+  if(!tot) return {pct:0,esp:0,rei:0,gra:0,cri:0,tot:0,act,totalPres:0,totalAct:0};
+  let totalPres=0,totalAct=0,esp=0,rei=0,gra=0,cri=0;
   students.forEach(s=>{
     let sPres=0,sAct=0;
     headers.forEach((_,i)=>{
@@ -852,10 +852,12 @@ function calcStats(students, headers, blocked, dayNums, yr, mn) {
       sAct++;
       if(dst==='present') sPres++;
     });
-    const p=sAct>0?sPres/sAct:0; sum+=p;
+    totalPres+=sPres; totalAct+=sAct;
+    const p=sAct>0?sPres/sAct:0;
     if(p>=0.90)esp++; else if(p>=0.85)rei++; else if(p>=0.50)gra++; else cri++;
   });
-  return {pct:sum/tot,esp,rei,gra,cri,tot,act};
+  // pct = total presences / total active slots (same method as a calculator)
+  return {pct:totalAct>0?totalPres/totalAct:0,esp,rei,gra,cri,tot,act,totalPres,totalAct};
 }
 
 function estado(p) {
@@ -1431,16 +1433,16 @@ function renderMes(data,label) {
   });
   // Stats using elapsed days + fecha_ingreso per student
   const actElapsed=elapsedIdx.length;
-  let esp2=0,rei2=0,gra2=0,cri2=0,pctSum2=0;
+  let esp2=0,rei2=0,gra2=0,cri2=0,mPres2=0,mAct2=0;
   students.forEach(s=>{
     const validEl=elapsedIdx.filter(i=>!excluido(dayStatus(s,i,dayNums,yr2,mn2)));
     const pr=validEl.filter(i=>s.dias[i]).length;
     const act=validEl.length;
+    mPres2+=pr; mAct2+=act;
     const p=act>0?pr/act:0;
-    pctSum2+=p;
     if(p>=0.90)esp2++; else if(p>=0.85)rei2++; else if(p>=0.50)gra2++; else cri2++;
   });
-  const pctFinal=students.length?pctSum2/students.length:0;
+  const pctFinal=mAct2>0?mPres2/mAct2:0;
   const stElapsed={act:actElapsed,pct:pctFinal,esp:esp2,rei:rei2,gra:gra2,cri:cri2};
   const totalMonthDays=(headers||[]).filter((_,i)=>!bs.has(i)).length;
   const pc=stElapsed.pct>=0.85?'ok':stElapsed.pct>=0.70?'warn':'bad';
@@ -1515,7 +1517,7 @@ function renderMes(data,label) {
       ${cells}
       <td data-pres="${si}" style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--grn);font-size:11px">${pr}</td>
       <td data-aus="${si}" style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--red);font-size:11px">${aus}</td>
-      <td data-pct="${si}" class="pc" style="color:${pColor(p)}">${Math.round(p*100)}%</td>
+      <td data-pct="${si}" class="pc" style="color:${pColor(p)}">${(p*100).toFixed(1)}%</td>
       <td data-est="${si}" style="font-size:10px"><span class="eb ${est.c}">${est.l}</span></td>
       <td class="no-print" style="padding:2px 5px;white-space:nowrap">
 
@@ -1531,7 +1533,7 @@ function renderMes(data,label) {
     const isFuture=!elapsedIdx.includes(di);
     if(isFuture) return `<td class="${sep}" style="text-align:center;color:#ccc;font-size:9px">—</td>`;
     const c=students.filter(s=>s.dias[di]).length;
-    return `<td class="${sep}">${students.length?Math.round(c/students.length*100)+'%':'—'}</td>`;
+    return `<td class="${sep}">${students.length?(c/students.length*100).toFixed(1)+'%':'—'}</td>`;
   }).join('');
 
   const addForm=`<div class="af no-print" id="af">
@@ -1619,13 +1621,13 @@ function renderListado() {
 
     // Per-course stats
     const students=Object.values(map).filter(s=>s.act>0);
-    let esp=0,rei=0,gra=0,cri=0,pctSum=0;
+    let esp=0,rei=0,gra=0,cri=0,listPres=0,listAct=0;
     students.forEach(s=>{
       const p=s.act>0?s.pres/s.act:0;
-      pctSum+=p;
+      listPres+=s.pres; listAct+=s.act;
       if(p>=0.90)esp++; else if(p>=0.85)rei++; else if(p>=0.50)gra++; else cri++;
     });
-    courseData[course]={students,totalDays:courseDays,avgPct:students.length?pctSum/students.length:0,esp,rei,gra,cri};
+    courseData[course]={students,totalDays:courseDays,avgPct:listAct>0?listPres/listAct:0,esp,rei,gra,cri};
   });
 
   // Admin global summary bar
@@ -1785,16 +1787,21 @@ function renderAcumulado() {
     const parts=month.split(' ');
     const yr=parseInt(parts[parts.length-1]);
     const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
-    let daysElapsed=0, presTotal=0;
+    let daysElapsed=0, presTotal=0, activeSlots=0;
     const sts=data.students||[];
     (data.headers||[]).forEach((_,i)=>{
       if(bs.has(i)) return;
       const dt=new Date(yr,mn-1,dayNums[i]||i+1);
       if(dt>today) return;
       daysElapsed++;
-      sts.forEach(s=>{ if(s.dias[i]) presTotal++; });
+      sts.forEach(s=>{
+        const dst=dayStatus(s,i,dayNums,yr,mn);
+        if(excluido(dst)) return;
+        activeSlots++;
+        if(dst==='present') presTotal++;
+      });
     });
-    const pct=sts.length&&daysElapsed?presTotal/(sts.length*daysElapsed):0;
+    const pct=activeSlots>0?presTotal/activeSlots:0;
     const est=estado(pct);
     const ml=month.replace(' '+activeYear,'');
     return `<div style="display:flex;align-items:center;gap:10px;padding:7px 14px;
@@ -1804,7 +1811,7 @@ function renderAcumulado() {
       <span style="color:var(--ink3)">·</span>
       <span>${daysElapsed} días</span>
       <span style="color:var(--ink3)">·</span>
-      <span style="font-family:var(--fd);font-weight:700;color:${pColor(pct)}">${Math.round(pct*100)}%</span>
+      <span style="font-family:var(--fd);font-weight:700;color:${pColor(pct)}">${(pct*100).toFixed(1)}%</span>
       <span><span class="eb ${est.c}">${est.l}</span></span>
     </div>`;
   }).join('');
@@ -1827,7 +1834,7 @@ function renderAcumulado() {
       <td class="rc">${s.rut}</td>
       <td style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--grn)">${s.pres}</td>
       <td style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--red)">${aus}</td>
-      <td style="text-align:center;font-family:var(--fd);font-weight:700;color:${pColor(pct)}">${Math.round(pct*100)}%</td>
+      <td style="text-align:center;font-family:var(--fd);font-weight:700;color:${pColor(pct)}">${(pct*100).toFixed(1)}%</td>
       <td style="text-align:center"><span class="eb ${est.c}">${est.l}</span></td>
     </tr>`;
   }).join('');
@@ -1858,7 +1865,7 @@ function renderAcumulado() {
         <div style="font-family:var(--fd);font-size:11px;font-weight:700;color:var(--ink3);
           text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px">% total</div>
         <div style="font-family:var(--fd);font-size:22px;font-weight:800;
-          color:${pColor(totPct)}">${Math.round(totPct*100)}%</div>
+          color:${pColor(totPct)}">${(totPct*100).toFixed(1)}%</div>
       </div>
       <div>
         <span class="eb ${totEst.c}" style="font-size:11px;padding:3px 10px">${totEst.l}</span>
@@ -1895,7 +1902,7 @@ function renderAcumulado() {
           <td class="tl" colspan="3" style="text-align:left">Total acumulado ${curCourse}</td>
           <td style="color:var(--grn)">${totP}</td>
           <td style="color:var(--red)">${totA2-totP}</td>
-          <td style="color:${pColor(totPct)};font-size:13px">${Math.round(totPct*100)}%</td>
+          <td style="color:${pColor(totPct)};font-size:13px">${(totPct*100).toFixed(1)}%</td>
           <td><span class="eb ${totEst.c}">${totEst.l}</span></td>
         </tr></tfoot>
       </table>
@@ -1993,7 +2000,7 @@ function drawCharts(data) {
   const dpct=headers.map((_,di)=>{
     if(bs.has(di)) return null;
     const c=students.filter(s=>s.dias[di]).length;
-    return students.length?Math.round(c/students.length*100):0;
+    return students.length?parseFloat((c/students.length*100).toFixed(1)):0;
   });
 
   const ctxL=document.getElementById('cl');
@@ -2008,7 +2015,7 @@ function drawCharts(data) {
 
   const srtd=students.map(s=>{
     const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
-    return act>0?Math.round(pr/act*100):0;
+    return act>0?parseFloat((pr/act*100).toFixed(1)):0;
   });
   const dist=[srtd.filter(p=>p>=90).length,srtd.filter(p=>p>=85&&p<90).length,
     srtd.filter(p=>p>=50&&p<75).length,srtd.filter(p=>p<50).length];
@@ -2020,7 +2027,7 @@ function drawCharts(data) {
 
   const sorted=[...students].map(s=>{
     const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
-    const p=act>0?Math.round(pr/act*100):0;
+    const p=act>0?parseFloat((pr/act*100).toFixed(1)):0;
     const parts=s.nombre.trim().split(' ');
     return{n:(parts[0]||'')+' '+(parts[1]||''),p};
   }).sort((a,b)=>a.p-b.p);
@@ -2094,7 +2101,7 @@ function updateStudentRowStats(si) {
   if(ausEl){ausEl.textContent=aus;ausEl.style.color='var(--red)';}
   // Update % cell
   const pctEl=document.querySelector(`td[data-pct="${si}"]`);
-  if(pctEl){pctEl.textContent=Math.round(p*100)+'%';pctEl.style.color=pc;}
+  if(pctEl){pctEl.textContent=(p*100).toFixed(1)+'%';pctEl.style.color=pc;}
   // Update estado cell
   const estEl=document.querySelector(`td[data-est="${si}"]`);
   if(estEl){estEl.innerHTML=`<span class="eb ${est.c}">${est.l}</span>`;}
@@ -2104,7 +2111,7 @@ function updateDayFooter(di) {
   const d=db[curMonth][curCourse];
   const sts=d.students||[];
   const cnt=sts.filter(s=>s.dias[di]).length;
-  const p=sts.length?Math.round(cnt/sts.length*100):0;
+  const p=sts.length?(cnt/sts.length*100).toFixed(1):0;
   const el=document.querySelector(`td[data-foot="${di}"]`);
   if(el) el.textContent=p+'%';
 }
@@ -2128,16 +2135,16 @@ function updateStatsBar() {
     return dd<=today;
   });
   // Per-student calculation respecting fecha_ingreso
-  let esp=0,rei=0,gra=0,cri=0,pctSum=0;
+  let esp=0,rei=0,gra=0,cri=0,sbPres=0,sbAct=0;
   students.forEach(s=>{
     const validEl=elapsedIdx.filter(i=>!excluido(dayStatus(s,i,dayNums,yr,mn)));
     const pr=validEl.filter(i=>s.dias[i]).length;
     const act=validEl.length;
+    sbPres+=pr; sbAct+=act;
     const p=act>0?pr/act:0;
-    pctSum+=p;
     if(p>=0.90)esp++; else if(p>=0.85)rei++; else if(p>=0.50)gra++; else cri++;
   });
-  const pct=students.length?pctSum/students.length:0;
+  const pct=sbAct>0?sbPres/sbAct:0;
   const pc=pct>=0.90?'ok':pct>=0.85?'warn':'bad';
   const upd=(id,val,cls)=>{const e=document.getElementById(id);if(e){e.textContent=val;if(cls)e.className='sn '+cls;}};
   upd('sb-pct',(pct*100).toFixed(1)+'%',pc);
@@ -2299,7 +2306,7 @@ function getTendData(course, monthFilter) {
     (data.students||[]).forEach(s=>{
       if(!stuMap[s.rut]) stuMap[s.rut]={rut:s.rut,nombre:s.nombre,months:[]};
       const pct=act>0?(presMap[s.rut]||0)/act:0;
-      stuMap[s.rut].months.push({month:month.replace(' '+activeYear,''),pct:Math.round(pct*100)});
+      stuMap[s.rut].months.push({month:month.replace(' '+activeYear,''),pct:parseFloat((pct*100).toFixed(1))});
     });
   });
 
@@ -2670,22 +2677,22 @@ async function generateReport(selectedMonthKeys) {
     const dateStr= today.toLocaleDateString('es-CL',{day:'2-digit',month:'long',year:'numeric'});
 
     const courseAgg={};
-    COURSES.forEach(c=>{ courseAgg[c]={pctSum:0,cnt:0,esp:0,rei:0,gra:0,cri:0,mat:0}; });
+    COURSES.forEach(c=>{ courseAgg[c]={totalPres:0,totalAct:0,esp:0,rei:0,gra:0,cri:0,mat:0}; });
     const monthRows=[];
     const critMap={};
 
     months.forEach(m=>{
-      let mPSum=0,mPCnt=0,mEsp=0,mRei=0,mGra=0,mCri=0,mTot=0;
+      let mPres=0,mAct=0,mEsp=0,mRei=0,mGra=0,mCri=0,mTot=0;
       COURSES.forEach(c=>{
         const d=db[m.name]?.[c]; if(!d||!d.students?.length) return;
         const parts=m.name.split(' '),yr=parseInt(parts[parts.length-1]);
         const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
         const st=calcStats(d.students,d.headers,d.blocked,d.dayNums,yr,mn);
-        courseAgg[c].pctSum+=st.pct; courseAgg[c].cnt++;
+        courseAgg[c].totalPres+=st.totalPres; courseAgg[c].totalAct+=st.totalAct;
         courseAgg[c].esp+=st.esp; courseAgg[c].rei+=st.rei;
         courseAgg[c].gra+=st.gra; courseAgg[c].cri+=st.cri;
         courseAgg[c].mat=Math.max(courseAgg[c].mat,d.students.length);
-        mPSum+=st.pct; mPCnt++; mEsp+=st.esp; mRei+=st.rei; mGra+=st.gra; mCri+=st.cri; mTot+=st.tot;
+        mPres+=st.totalPres; mAct+=st.totalAct; mEsp+=st.esp; mRei+=st.rei; mGra+=st.gra; mCri+=st.cri; mTot+=st.tot;
         // alumnos críticos por mes
         const bs=new Set(d.blocked||[]);
         const dn=d.dayNums||d.headers.map((_,i)=>i+1);
@@ -2702,17 +2709,17 @@ async function generateReport(selectedMonthKeys) {
           if(p<0.5){
             const k=s.rut+'_'+c;
             if(!critMap[k]) critMap[k]={nombre:s.nombre,rut:s.rut,curso:c,meses:[]};
-            critMap[k].meses.push(m.label+': '+Math.round(p*100)+'%');
+            critMap[k].meses.push(m.label+': '+(p*100).toFixed(1)+'%');
           }
         });
       });
-      monthRows.push({label:m.label,pct:mPCnt>0?mPSum/mPCnt:0,esp:mEsp,rei:mRei,gra:mGra,cri:mCri,tot:mTot});
+      monthRows.push({label:m.label,pct:mAct>0?mPres/mAct:0,esp:mEsp,rei:mRei,gra:mGra,cri:mCri,tot:mTot});
     });
 
-    const activeCourses=COURSES.filter(c=>courseAgg[c].cnt>0);
-    const globalPct=activeCourses.length>0
-      ? activeCourses.reduce((s,c)=>s+(courseAgg[c].cnt>0?courseAgg[c].pctSum/courseAgg[c].cnt:0),0)/activeCourses.length
-      : 0;
+    const activeCourses=COURSES.filter(c=>courseAgg[c].totalAct>0);
+    const globalPres=activeCourses.reduce((s,c)=>s+courseAgg[c].totalPres,0);
+    const globalAct =activeCourses.reduce((s,c)=>s+courseAgg[c].totalAct ,0);
+    const globalPct =globalAct>0?globalPres/globalAct:0;
     const totalMat=activeCourses.reduce((s,c)=>s+courseAgg[c].mat,0);
     const critList=Object.values(critMap).sort((a,b)=>a.curso.localeCompare(b.curso));
 
@@ -2750,11 +2757,11 @@ async function generateReport(selectedMonthKeys) {
     const courseTableRows=[
       new TableRow({tableHeader:true,children:hdrCurso.map(h=>tc(h,{bold:true,bg:'F4F4F5',color:'52525B'}))}),
       ...activeCourses.map(c=>{
-        const d=courseAgg[c]; const p=d.cnt>0?d.pctSum/d.cnt:0;
+        const d=courseAgg[c]; const p=d.totalAct>0?d.totalPres/d.totalAct:0;
         return new TableRow({children:[
           tc(c,{align:AlignmentType.LEFT}),
           tc(d.mat),
-          tc(Math.round(p*100)+'%',{bold:true,color:pColor(p)}),
+          tc((p*100).toFixed(1)+'%',{bold:true,color:pColor(p)}),
           tc(d.esp,{color:'2B6A3E'}), tc(d.rei,{color:'1A4B8C'}),
           tc(d.gra,{color:'B35A00'}), tc(d.cri,{bold:d.cri>0,color:d.cri>0?'9A1C1C':'18181B'})
         ]});
@@ -2768,7 +2775,7 @@ async function generateReport(selectedMonthKeys) {
       ...monthRows.map(m=>new TableRow({children:[
         tc(m.label,{align:AlignmentType.LEFT}),
         tc(m.tot),
-        tc(Math.round(m.pct*100)+'%',{bold:true,color:pColor(m.pct)}),
+        tc((m.pct*100).toFixed(1)+'%',{bold:true,color:pColor(m.pct)}),
         tc(m.esp,{color:'2B6A3E'}), tc(m.rei,{color:'1A4B8C'}),
         tc(m.gra,{color:'B35A00'}), tc(m.cri,{bold:m.cri>0,color:m.cri>0?'9A1C1C':'18181B'})
       ]}))
@@ -2786,7 +2793,7 @@ async function generateReport(selectedMonthKeys) {
     ]:[];
 
     // ── Conclusiones dinámicas ────────────────────────────────────────────────
-    const pctG=Math.round(globalPct*100);
+    const pctG=(globalPct*100).toFixed(1);
     const sortedM=[...monthRows].sort((a,b)=>a.pct-b.pct);
     const worstM=sortedM[0], bestM=sortedM[sortedM.length-1];
     const concs=[];
@@ -2805,7 +2812,7 @@ async function generateReport(selectedMonthKeys) {
       concs.push(`No se registran estudiantes con inasistencia crítica en el período analizado, lo que representa un logro significativo de la gestión preventiva del establecimiento.`);
 
     if(worstM&&bestM&&worstM.label!==bestM.label)
-      concs.push(`El análisis mensual revela que ${worstM.label} presentó la menor tasa de asistencia (${Math.round(worstM.pct*100)}%), mientras que ${bestM.label} alcanzó el mejor desempeño (${Math.round(bestM.pct*100)}%). Se sugiere analizar los factores contextuales, climáticos y pedagógicos que incidieron en estas variaciones para orientar acciones preventivas en períodos futuros.`);
+      concs.push(`El análisis mensual revela que ${worstM.label} presentó la menor tasa de asistencia (${(worstM.pct*100).toFixed(1)}%), mientras que ${bestM.label} alcanzó el mejor desempeño (${(bestM.pct*100).toFixed(1)}%). Se sugiere analizar los factores contextuales, climáticos y pedagógicos que incidieron en estas variaciones para orientar acciones preventivas en períodos futuros.`);
 
     concs.push(`Se recomienda mantener el registro sistemático y verificable de asistencia como herramienta de gestión pedagógica e institucional; fortalecer canales de comunicación oportunos con familias de estudiantes con ausentismo recurrente; y generar instancias de análisis mensual entre el equipo directivo, inspectoría y los docentes jefe de cada curso.`);
 
