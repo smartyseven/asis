@@ -401,7 +401,8 @@ tfoot td.tl{text-align:left}
         </tr></thead>
         <tbody id="cred-rows"></tbody>
       </table>
-      <div class="ma" style="margin-top:16px">
+      <div class="ma" style="margin-top:16px;justify-content:space-between">
+        <button id="pie-bulk-btn" class="btn b-a" onclick="bulkSetPie()" style="background:var(--acc);color:#fff;font-size:12px">⬆️ Cargar alumnos PIE</button>
         <button class="btn b-o" onclick="closeOv('ov-cred')">Cerrar</button>
       </div>
     </div>
@@ -441,6 +442,13 @@ tfoot td.tl{text-align:left}
       <div class="mf"><label>Fecha de retiro <span style="font-size:10px;font-weight:400;color:var(--ink3)">(dejar vacío si sigue activo)</span></label>
         <input id="se-retiro" type="date">
         <small style="font-size:10.5px;color:var(--red);margin-top:3px;display:block">Días posteriores quedarán bloqueados</small>
+      </div>
+      <div class="mf" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--as);border-radius:var(--r);border:1px solid rgba(61,82,160,.2)">
+        <input id="se-pie" type="checkbox" style="width:16px;height:16px;cursor:pointer;accent-color:var(--acc)">
+        <div>
+          <label style="margin:0;font-weight:600;cursor:pointer" for="se-pie">Alumno PIE</label>
+          <div style="font-size:10px;color:var(--ink3);margin-top:1px">Visible para la docente PIE</div>
+        </div>
       </div>
       <div class="mf" style="display:flex;align-items:center;gap:8px">
         <label style="flex-shrink:0;margin-bottom:0">Posición</label>
@@ -653,6 +661,7 @@ const USERS = {
   'emag':     { pass:'emag@4614',  courses:null,          role:'admin'    },
   'directivo':{ pass:'emag4614',   courses:null,          role:'readonly' },
   'insp':     { pass:'insp2026',   courses:null,          role:'insp'     },
+  'PIE':      { pass:'pie4614',    courses:null,          role:'pie'      },
   'NT':       { pass:'valecr0',    courses:['NT1','NT2'], role:'docente'  },
   '1':        { pass:'cint171',    courses:['1° Básico'], role:'docente'  },
   '2':        { pass:'patymu2',    courses:['2° Básico'], role:'docente'  },
@@ -680,6 +689,7 @@ function isAdmin()        { return currentUser?.role === 'admin'; }
 function isInsp()         { return currentUser?.role === 'insp'; }
 function isDocente()      { return currentUser?.role === 'docente'; }
 function isReadOnly()     { return currentUser?.role === 'readonly'; }
+function isPie()          { return currentUser?.role === 'pie'; }
 function canEdit()        { return isAdmin() || isInsp(); }
 function allowedCourses() { return (currentUser?.courses) ? currentUser.courses : COURSES; }
 
@@ -945,7 +955,7 @@ function getCumData(course) {
     const mn      = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
 
     // Ensure every student in this month is in the map
-    (data.students||[]).forEach(s=>{
+    (data.students||[]).filter(s=>!isPie()||s.pie).forEach(s=>{
       if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0};
     });
 
@@ -1035,7 +1045,7 @@ function credUnlock() {
     document.getElementById('cred-err').style.display='block';
     document.getElementById('cred-pass').value=''; return;
   }
-  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente'};
+  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente',pie:'PIE'};
   const rows=Object.entries(USERS).map(([u,d])=>{
     const courses=d.courses?d.courses.join(', '):'Todos los cursos';
     return `<tr style="border-bottom:1px solid var(--rule2)">
@@ -1050,6 +1060,24 @@ function credUnlock() {
   document.getElementById('cred-table-step').style.display='block';
 }
 function closeOv(id) { document.getElementById(id).classList.remove('show'); }
+
+const PIE_RUTS = new Set(['27710281-1','27718984-4','27258981-K','27271918-7','27352095-3','27482095-0','26830846-6','26871072-8','27099521-7','27106979-0','27141194-4','26136106-K','26199934-K','26230286-5','26347643-3','26406799-5','26468619-9','26472429-5','26498194-8','26513913-2','26545726-6','25753759-5','25759569-2','25848268-9','25852497-7','26057853-7','26062709-0','26096401-1','25198989-3','25455181-3','25524612-7','25538606-9','25591325-5','25678278-2','25700661-1','24973396-2','24998724-7','25049328-2','25074943-0','25131023-8','25171687-0','25286720-1','25288469-6','25313344-9','24615069-9','24741454-1','24748171-0','24758698-9','24906391-6','24908648-7','24926941-7','28388678-6','23246163-2','24202798-1','24253852-8','24383209-8','24417132-K','24432749-4','24504708-8','24517292-3','24539978-2','23826050-7','24099782-7','24151958-9','24165669-1','24179230-7','24199663-8','24246378-1']);
+
+function bulkSetPie() {
+  if(!isAdmin()) return;
+  let marked=0;
+  Object.keys(db).forEach(month=>{
+    if(!db[month]) return;
+    Object.keys(db[month]).forEach(course=>{
+      const sts=db[month][course]?.students;
+      if(!sts) return;
+      sts.forEach(s=>{ if(PIE_RUTS.has(s.rut)){ s.pie=true; marked++; } });
+    });
+  });
+  saveDB();
+  toast(`✓ ${marked} registros marcados como PIE y guardados`,'ok');
+  document.getElementById('pie-bulk-btn').style.display='none';
+}
 document.addEventListener('DOMContentLoaded',()=>
   document.querySelectorAll('.ov').forEach(o=>
     o.addEventListener('click',e=>{if(e.target===o)closeOv(o.id);})));
@@ -1128,6 +1156,7 @@ function seUnlock() {
     document.getElementById('se-rut').value=s.rut;
     document.getElementById('se-ingreso').value=s.fecha_ingreso||'';
     document.getElementById('se-retiro').value=s.fecha_retiro||'';
+    document.getElementById('se-pie').checked=!!s.pie;
     const tot=db[seTarget.month][seTarget.course].students.length;
     document.getElementById('se-pos').textContent='Posición '+(seTarget.si+1)+' de '+tot;
     document.getElementById('se-err').style.display='none';
@@ -1155,7 +1184,8 @@ function seSave() {
   const n=document.getElementById('se-nombre').value.trim();
   const r=document.getElementById('se-rut').value.trim();
   const fi=document.getElementById('se-ingreso').value;
-  const fr=document.getElementById('se-retiro').value; // fecha_retiro YYYY-MM-DD
+  const fr=document.getElementById('se-retiro').value;
+  const pie=document.getElementById('se-pie').checked;
   const e=document.getElementById('se-err');
   if(!n){e.textContent='Nombre obligatorio';e.style.display='block';return;}
   const oldRut=db[seTarget.month][seTarget.course].students[seTarget.si].rut;
@@ -1165,9 +1195,9 @@ function seSave() {
     if(idx>=0){
       db[m.name][seTarget.course].students[idx].nombre=n;
       if(r) db[m.name][seTarget.course].students[idx].rut=r;
-      // Update fecha_ingreso in ALL months (empty = desde inicio)
       db[m.name][seTarget.course].students[idx].fecha_ingreso=fi||'';
       db[m.name][seTarget.course].students[idx].fecha_retiro=fr||'';
+      db[m.name][seTarget.course].students[idx].pie=pie;
     }
   });
   saveDB();closeOv('ov-edit');renderAll();
@@ -1332,6 +1362,7 @@ function killCharts() {
 
 // ── SECTION SWITCHING ─────────────────────────────────────────────────────────
 function setSection(s) {
+  if(isPie() && !['mes','acumulado','listado'].includes(s)) return;
   if((isDocente()||isInsp()) && s!=='mes' && s!=='listado') return;
   curSection=s; renderMain();
 }
@@ -1350,7 +1381,8 @@ function renderMain() {
 
   const label=mLabel(curMonth);
 
-  // Docentes: solo secciones permitidas
+  // Restringir secciones por rol
+  if(isPie() && !['mes','acumulado','listado'].includes(curSection)) curSection='mes';
   if((isDocente()||isInsp()) && curSection!=='mes' && curSection!=='listado') curSection='mes';
 
   // Toolbar (always shown)
@@ -1361,7 +1393,7 @@ function renderMain() {
         <button class="vb${curSection==='mes'?' on':''}" onclick="setSection('mes')">📋 Mes</button>
         ${(!isDocente()&&!isInsp())?`
         <button class="vb${curSection==='acumulado'?' on':''}" onclick="setSection('acumulado')">📊 Acumulado</button>
-        <button class="vb${curSection==='honor'?' on':''}"     onclick="setSection('honor')">🏅 Honor</button>
+        ${!isPie()?`<button class="vb${curSection==='honor'?' on':''}" onclick="setSection('honor')">🏅 Honor</button>`:''}
         ${isAdmin()&&editMode?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
         `:''}
         <button class="vb${curSection==='listado'?' on':''}" onclick="setSection('listado')">👥 Listado</button>
@@ -1410,7 +1442,7 @@ function renderMain() {
 function renderMes(data,label) {
   // Ensure all students have a permanent list number
   if(isAdmin()||isInsp()) ensureNumLista(curCourse);
-  const origStudents=data.students||[];
+  const origStudents=(data.students||[]).filter(s=>!isPie()||s.pie);
   const students=origStudents.slice().sort((a,b)=>(a.num_lista||999)-(b.num_lista||999));
   const headers=data.headers||[];
   const dayNums=data.dayNums||headers.map((_,i)=>i+1);
@@ -1597,12 +1629,13 @@ function renderListado() {
       const yr     = parseInt(parts[parts.length-1]);
       const mn     = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
 
-      // Ensure all students exist in map (preserve num_lista and fecha_retiro)
+      // Ensure all students exist in map (preserve num_lista, fecha_retiro, pie)
       (data.students||[]).forEach(s=>{
-        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0,num_lista:s.num_lista||null,fecha_retiro:s.fecha_retiro||''};
+        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0,num_lista:s.num_lista||null,fecha_retiro:s.fecha_retiro||'',pie:!!s.pie};
         else {
           if(s.num_lista && !map[s.rut].num_lista) map[s.rut].num_lista=s.num_lista;
           if(s.fecha_retiro) map[s.rut].fecha_retiro=s.fecha_retiro;
+          if(s.pie) map[s.rut].pie=true;
         }
       });
 
@@ -1625,7 +1658,7 @@ function renderListado() {
     // Per-course stats — excluir alumnos retirados antes de hoy
     const now=new Date();
     const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-    const students=Object.values(map).filter(s=>s.act>0 && (!s.fecha_retiro || s.fecha_retiro>=todayStr));
+    const students=Object.values(map).filter(s=>s.act>0 && (!s.fecha_retiro || s.fecha_retiro>=todayStr) && (!isPie()||s.pie));
     let esp=0,rei=0,gra=0,cri=0,listPres=0,listAct=0;
     students.forEach(s=>{
       const p=s.act>0?s.pres/s.act:0;
@@ -1731,7 +1764,7 @@ function renderAcumulado() {
     const yr=parseInt(parts[parts.length-1]);
     const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
 
-    (data.students||[]).forEach(s=>{
+    (data.students||[]).filter(s=>!isPie()||s.pie).forEach(s=>{
       if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0};
     });
 
