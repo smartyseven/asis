@@ -1642,9 +1642,9 @@ function renderListado() {
     activeCourses.forEach(c=>{
       const cd=courseData[c];
       gStu+=cd.students.length; gEsp+=cd.esp; gRei+=cd.rei; gGra+=cd.gra; gCri+=cd.cri;
-      cd.students.forEach(s=>{ gPct+=(s.act>0?s.pres/s.act:0); });
+      gPct+=cd.avgPct; // suma de % de cada curso (igual que la calculadora)
     });
-    const pctG=gStu?gPct/gStu:0;
+    const pctG=activeCourses.length?gPct/activeCourses.length:0;
     summaryHtml=`<div class="stats" style="margin-bottom:16px">
       <div class="st"><div class="sn">${gStu}</div><div class="sl">Total alumnos</div></div>
       <div class="st"><div class="sn ${pctG>=0.85?'ok':pctG>=0.70?'warn':'bad'}">${(pctG*100).toFixed(1)}%</div><div class="sl">Promedio general</div></div>
