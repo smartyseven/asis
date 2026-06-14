@@ -1597,10 +1597,13 @@ function renderListado() {
       const yr     = parseInt(parts[parts.length-1]);
       const mn     = MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
 
-      // Ensure all students exist in map (preserve num_lista)
+      // Ensure all students exist in map (preserve num_lista and fecha_retiro)
       (data.students||[]).forEach(s=>{
-        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0,num_lista:s.num_lista||null};
-        else if(s.num_lista && !map[s.rut].num_lista) map[s.rut].num_lista=s.num_lista;
+        if(!map[s.rut]) map[s.rut]={rut:s.rut,nombre:s.nombre,pres:0,act:0,num_lista:s.num_lista||null,fecha_retiro:s.fecha_retiro||''};
+        else {
+          if(s.num_lista && !map[s.rut].num_lista) map[s.rut].num_lista=s.num_lista;
+          if(s.fecha_retiro) map[s.rut].fecha_retiro=s.fecha_retiro;
+        }
       });
 
       // Count elapsed days for this month
@@ -1619,8 +1622,10 @@ function renderListado() {
       });
     });
 
-    // Per-course stats
-    const students=Object.values(map).filter(s=>s.act>0);
+    // Per-course stats — excluir alumnos retirados antes de hoy
+    const now=new Date();
+    const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const students=Object.values(map).filter(s=>s.act>0 && (!s.fecha_retiro || s.fecha_retiro>=todayStr));
     let esp=0,rei=0,gra=0,cri=0,listPres=0,listAct=0;
     students.forEach(s=>{
       const p=s.act>0?s.pres/s.act:0;
@@ -2682,7 +2687,7 @@ async function generateReport(selectedMonthKeys) {
     const critMap={};
 
     months.forEach(m=>{
-      let mPres=0,mAct=0,mEsp=0,mRei=0,mGra=0,mCri=0,mTot=0;
+      let mPctSum=0,mPres=0,mAct=0,mCourses=0,mEsp=0,mRei=0,mGra=0,mCri=0,mTot=0;
       COURSES.forEach(c=>{
         const d=db[m.name]?.[c]; if(!d||!d.students?.length) return;
         const parts=m.name.split(' '),yr=parseInt(parts[parts.length-1]);
@@ -2692,6 +2697,7 @@ async function generateReport(selectedMonthKeys) {
         courseAgg[c].esp+=st.esp; courseAgg[c].rei+=st.rei;
         courseAgg[c].gra+=st.gra; courseAgg[c].cri+=st.cri;
         courseAgg[c].mat=Math.max(courseAgg[c].mat,d.students.length);
+        if(st.totalAct>0){ mPctSum+=st.totalPres/st.totalAct; mCourses++; }
         mPres+=st.totalPres; mAct+=st.totalAct; mEsp+=st.esp; mRei+=st.rei; mGra+=st.gra; mCri+=st.cri; mTot+=st.tot;
         // alumnos críticos por mes
         const bs=new Set(d.blocked||[]);
@@ -2713,13 +2719,17 @@ async function generateReport(selectedMonthKeys) {
           }
         });
       });
-      monthRows.push({label:m.label,pct:mAct>0?mPres/mAct:0,esp:mEsp,rei:mRei,gra:mGra,cri:mCri,tot:mTot});
+      monthRows.push({label:m.label,pct:mCourses>0?mPctSum/mCourses:0,esp:mEsp,rei:mRei,gra:mGra,cri:mCri,tot:mTot});
     });
 
     const activeCourses=COURSES.filter(c=>courseAgg[c].totalAct>0);
-    const globalPres=activeCourses.reduce((s,c)=>s+courseAgg[c].totalPres,0);
-    const globalAct =activeCourses.reduce((s,c)=>s+courseAgg[c].totalAct ,0);
-    const globalPct =globalAct>0?globalPres/globalAct:0;
+    // Global % = simple average of course %s (each course counts equally,
+    // consistent with summing the course table rows manually)
+    const globalPct=activeCourses.length>0
+      ? activeCourses.reduce((s,c)=>{
+          return s+(courseAgg[c].totalAct>0?courseAgg[c].totalPres/courseAgg[c].totalAct:0);
+        },0)/activeCourses.length
+      : 0;
     const totalMat=activeCourses.reduce((s,c)=>s+courseAgg[c].mat,0);
     const critList=Object.values(critMap).sort((a,b)=>a.curso.localeCompare(b.curso));
 
