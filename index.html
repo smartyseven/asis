@@ -138,6 +138,8 @@ tfoot td.tl{text-align:left}
 .eb{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:9.5px;font-weight:700;letter-spacing:.02em}
 .ee{background:var(--gs);color:var(--grn)}.er{background:var(--as);color:var(--acc)}
 .eg{background:var(--ambs);color:var(--amb)}.ec{background:var(--rs);color:var(--red)}
+.el{background:#EFF6FF;color:#1A4B8C;border-radius:9999px;font-size:9px;font-weight:700;padding:1px 7px;white-space:nowrap}
+.el0{background:#F4F4F5;color:#71717A;border-radius:9999px;font-size:9px;font-weight:400;padding:1px 7px;white-space:nowrap}
 
 /* ADD FORM */
 .af{background:var(--surf);border:1px solid var(--rule);border-top:2px solid var(--acc);border-radius:0 0 var(--r) var(--r);padding:12px;margin-bottom:12px;display:none}
@@ -409,6 +411,64 @@ tfoot td.tl{text-align:left}
   </div>
 </div>
 
+<!-- LICENCIAS — PANEL DE GESTIÓN -->
+<div class="ov" id="ov-lic-list">
+  <div class="md" style="width:560px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 id="ll-titulo" style="margin:0">🏥 Licencias del alumno</h3>
+      ${``}
+    </div>
+    <div id="ll-body"></div>
+    <div class="ma" style="margin-top:14px;justify-content:space-between">
+      <button class="btn b-a" id="ll-add-btn" onclick="openLicFromList()" style="color:#1A4B8C;background:#EFF6FF;border-color:rgba(26,75,140,.3)">+ Nueva licencia</button>
+      <button class="btn b-o" onclick="closeOv('ov-lic-list')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- LICENCIA MÉDICA MODAL -->
+<div class="ov" id="ov-lic">
+  <div class="md" style="width:480px">
+    <h3>🏥 Ingresar Licencia Médica</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="mf" style="grid-column:1/3">
+        <label>Fecha de entrega de la licencia</label>
+        <input id="lic-entrega" type="date">
+      </div>
+      <div class="mf">
+        <label>Curso</label>
+        <select id="lic-curso" onchange="licCursoChange()" style="width:100%;padding:7px 10px;border:1px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fb);background:var(--paper)">
+          <option value="">— Selecciona curso —</option>
+        </select>
+      </div>
+      <div class="mf">
+        <label>Nombre del estudiante</label>
+        <select id="lic-alumno" style="width:100%;padding:7px 10px;border:1px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fb);background:var(--paper)">
+          <option value="">— Selecciona curso primero —</option>
+        </select>
+      </div>
+      <div class="mf" style="grid-column:1/3">
+        <label>Nombre del apoderado</label>
+        <input id="lic-apoderado" type="text" placeholder="Nombre completo del apoderado">
+      </div>
+      <div class="mf">
+        <label>Inicio de la licencia</label>
+        <input id="lic-inicio" type="date" onchange="licActualizarDias()">
+      </div>
+      <div class="mf">
+        <label>Fin de la licencia</label>
+        <input id="lic-fin" type="date" onchange="licActualizarDias()">
+      </div>
+      <div id="lic-dias-info" style="grid-column:1/3;display:none;background:var(--as);border-radius:var(--r);padding:8px 12px;font-size:12px;color:var(--acc);font-weight:600"></div>
+    </div>
+    <div class="me" id="lic-err" style="display:none;margin-top:8px"></div>
+    <div class="ma" style="margin-top:14px">
+      <button class="btn b-o" onclick="closeOv('ov-lic')">Cancelar</button>
+      <button class="btn b-a" onclick="saveLic()">Guardar licencia</button>
+    </div>
+  </div>
+</div>
+
 <!-- STUDENT EDIT MODAL -->
 <div class="ov" id="ov-edit">
   <div class="md">
@@ -527,11 +587,14 @@ tfoot td.tl{text-align:left}
         <button class="btn b-o" style="font-size:10.5px;padding:3px 10px" onclick="rpToggleAll(false)">Ninguno</button>
         <span id="rp-sel-count" style="font-size:11px;color:var(--ink3);margin-left:auto"></span>
       </div>
-      <div class="ma" style="margin-top:12px">
+      <div class="ma" style="margin-top:12px;flex-wrap:wrap;gap:8px">
         <button class="btn b-o" onclick="closeOv('ov-report')">Cancelar</button>
-        <button class="btn b-s" onclick="rpGenerate()">
+        <button class="btn b-s" onclick="rpGenerate()" title="Informe Word (.docx) con tendencias">
           <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Generar informe
+          Informe Word
+        </button>
+        <button class="btn b-a" onclick="rpGenerateSemester()" title="Informe semestral HTML con gráficos, imprimible como PDF">
+          📊 Informe Semestral
         </button>
       </div>
     </div>
@@ -660,9 +723,9 @@ let db          = {};
 const USERS = {
   'emag':     { pass:'emag@4614',  courses:null,          role:'admin'    },
   'directivo':  { pass:'emag4614',   courses:null,          role:'readonly' },
-  'Convivencia':{ pass:'conv4614',   courses:null,          role:'readonly' },
   'insp':     { pass:'insp2026',   courses:null,          role:'insp'     },
-  'PIE':      { pass:'pie4614',    courses:null,          role:'pie'      },
+  'PIE':        { pass:'pie4614',    courses:null,          role:'pie'      },
+  'secretaria': { pass:'sec4614',    courses:null,          role:'lic'      },
   'NT':       { pass:'valecr0',    courses:['NT1','NT2'], role:'docente'  },
   '1':        { pass:'cint171',    courses:['1° Básico'], role:'docente'  },
   '2':        { pass:'patymu2',    courses:['2° Básico'], role:'docente'  },
@@ -691,7 +754,9 @@ function isInsp()         { return currentUser?.role === 'insp'; }
 function isDocente()      { return currentUser?.role === 'docente'; }
 function isReadOnly()     { return currentUser?.role === 'readonly'; }
 function isPie()          { return currentUser?.role === 'pie'; }
+function isLic()          { return currentUser?.role === 'lic'; }
 function canEdit()        { return isAdmin() || isInsp(); }
+function canEnterLic()    { return isAdmin() || isLic(); }
 function allowedCourses() { return (currentUser?.courses) ? currentUser.courses : COURSES; }
 
 let editMode    = false;  // unlocked by password
@@ -1046,7 +1111,7 @@ function credUnlock() {
     document.getElementById('cred-err').style.display='block';
     document.getElementById('cred-pass').value=''; return;
   }
-  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente',pie:'PIE'};
+  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente',pie:'PIE',lic:'Secretaría'};
   const rows=Object.entries(USERS).map(([u,d])=>{
     const courses=d.courses?d.courses.join(', '):'Todos los cursos';
     return `<tr style="border-bottom:1px solid var(--rule2)">
@@ -1364,6 +1429,7 @@ function killCharts() {
 // ── SECTION SWITCHING ─────────────────────────────────────────────────────────
 function setSection(s) {
   if(isPie() && !['mes','acumulado','listado'].includes(s)) return;
+  if(isLic() && s!=='mes' && s!=='listado') return;
   if((isDocente()||isInsp()) && s!=='mes' && s!=='listado') return;
   curSection=s; renderMain();
 }
@@ -1384,6 +1450,7 @@ function renderMain() {
 
   // Restringir secciones por rol
   if(isPie() && !['mes','acumulado','listado'].includes(curSection)) curSection='mes';
+  if(isLic() && curSection!=='mes' && curSection!=='listado') curSection='mes';
   if((isDocente()||isInsp()) && curSection!=='mes' && curSection!=='listado') curSection='mes';
 
   // Toolbar (always shown)
@@ -1423,6 +1490,9 @@ function renderMain() {
       ${isAdmin()?`<button class="btn b-o no-print" onclick="downloadBackup()" style="flex-shrink:0" title="Descargar copia de seguridad en JSON">
         <svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Backup
+      </button>`:''}
+      ${canEnterLic()?`<button class="btn b-o no-print" onclick="openLicModal()" style="flex-shrink:0;color:#1A4B8C;border-color:rgba(26,75,140,.3)" title="Ingresar licencia médica">
+        🏥 Ingresar licencia
       </button>`:''}
       ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1501,12 +1571,60 @@ function renderMes(data,label) {
     <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;vertical-align:middle;margin-right:3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     Clic en el número de un día para bloquearlo (feriado / suspensión)</div>`;
 
-  if(curView==='charts') return `${statsBar}${blkBar}<div class="cg">
+  if(curView==='charts'){
+    // Licencias del mes para este curso
+    const licMes=(()=>{
+      let count=0,days=0;
+      students.forEach(s=>{const l=getLicDaysInMonth(s.rut,yr2,mn2);count+=l.count;days+=l.days;});
+      return {count,days};
+    })();
+    const licBar=licMes.count>0?`
+    <div style="display:flex;align-items:center;gap:10px;background:#EFF6FF;border:1px solid rgba(26,75,140,.2);
+      border-radius:var(--r);padding:8px 14px;margin-bottom:10px;font-size:12px">
+      <span style="font-size:15px">🏥</span>
+      <span style="color:#1A4B8C;font-weight:700">${licMes.count} licencia${licMes.count!==1?'s':''}</span>
+      <span style="color:#52525B">presentadas este mes ·</span>
+      <span style="color:#1A4B8C;font-weight:700">${licMes.days} día${licMes.days!==1?'s':''} calendario justificados</span>
+    </div>`:'';
+
+    const adminLicTable=isAdmin()?(()=>{
+      const rows=students.map(s=>{
+        const validEl=elapsedIdx.filter(i=>!excluido(dayStatus(s,i,dayNums,yr2,mn2)));
+        const pres=validEl.filter(i=>s.dias[i]).length;
+        const act=validEl.length;
+        const ausencias=act-pres;
+        const ld=getLicDaysInMonth(s.rut,yr2,mn2);
+        const sinJust=Math.max(0,ausencias-ld.days);
+        const colorSJ=sinJust>0?'#B5291C':'#2D7A4F';
+        return `<tr>
+          <td style="padding:3px 8px;font-size:11px">${s.nombre}</td>
+          <td style="padding:3px 8px;text-align:center;font-size:11px;color:#1A4B8C">${ld.days>0?ld.days+'d':'—'}</td>
+          <td style="padding:3px 8px;text-align:center;font-size:11px;font-weight:700;color:${colorSJ}">${sinJust>0?sinJust+'d':'✓'}</td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-top:14px;background:#FFF8E7;border:1px solid rgba(196,122,26,.3);border-radius:var(--r);overflow:hidden">
+        <div style="background:rgba(196,122,26,.1);padding:7px 12px;font-size:11px;font-weight:700;color:#92400E;display:flex;align-items:center;gap:6px">
+          🔒 Resumen de ausencias (solo administrador)
+        </div>
+        <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#FEF6EC">
+            <th style="padding:4px 8px;text-align:left;font-size:10px;color:#92400E;font-weight:700;border-bottom:1px solid rgba(196,122,26,.2)">Alumno</th>
+            <th style="padding:4px 8px;text-align:center;font-size:10px;color:#1A4B8C;font-weight:700;border-bottom:1px solid rgba(196,122,26,.2)">Con licencia</th>
+            <th style="padding:4px 8px;text-align:center;font-size:10px;color:#B5291C;font-weight:700;border-bottom:1px solid rgba(196,122,26,.2)">Sin justificar</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
+    })():'';
+
+    return `${statsBar}${blkBar}${licBar}<div class="cg">
     <div class="cc"><div class="ct">Asistencia diaria (%)</div><div class="cw"><canvas id="cl"></canvas></div></div>
     <div class="cc"><div class="ct">Distribución por estado</div><div class="cw"><canvas id="cd"></canvas></div></div>
     <div class="cc" style="grid-column:1/-1"><div class="ct">% por alumno</div>
       <div class="cw" style="height:${Math.max(160,students.length*14)}px"><canvas id="cb"></canvas></div></div>
-  </div>`;
+    </div>${adminLicTable}`;
+  }
 
   // Table
   // Two-row header: DOW abbrev on top, day number on bottom
@@ -1552,9 +1670,24 @@ function renderMes(data,label) {
       <td data-aus="${si}" style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--red);font-size:11px">${aus}</td>
       <td data-pct="${si}" class="pc" style="color:${pColor(p)}">${(p*100).toFixed(1)}%</td>
       <td data-est="${si}" style="font-size:10px"><span class="eb ${est.c}">${est.l}</span></td>
-      <td class="no-print" style="padding:2px 5px;white-space:nowrap">
-
-      </td>
+      <td style="padding:2px 5px;white-space:nowrap;text-align:center">${(()=>{
+        const ld=getLicDaysInMonth(s.rut,yr2,mn2);
+        const canDetail=isAdmin()||isReadOnly()||isLic();
+        let badge;
+        if(ld.count>0){
+          badge=canDetail
+            ?`<span class="el" onclick="openLicList('${s.rut}','${s.nombre.replace(/'/g,"\\'")}','${curCourse}')" style="cursor:pointer" title="Ver/editar licencias — ${ld.days} días">${ld.count} lic · ${ld.days}d</span>`
+            :`<span class="el" title="${ld.count} licencia${ld.count!==1?'s':''} · ${ld.days} días">${ld.count} lic · ${ld.days}d</span>`;
+        } else {
+          badge=canDetail
+            ?`<span class="el0 no-print" onclick="openLicList('${s.rut}','${s.nombre.replace(/'/g,"\\'")}','${curCourse}')" style="cursor:pointer" title="Ver licencias">—</span>`
+            :`<span class="el0">—</span>`;
+        }
+        const editBtn=canEdit()&&editMode
+          ?`<button class="no-print" onclick="editStudentClick(${si})" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--acc);font-size:11px;vertical-align:middle" title="Editar alumno">✏️</button>`
+          :'';
+        return editBtn+badge;
+      })()}</td>
     </tr>`;
   }).join('');
 
@@ -1591,13 +1724,13 @@ function renderMes(data,label) {
           <th title="Días presentes">✓</th>
           <th title="Días ausentes">✗</th>
           <th>%</th><th>Estado</th>
-          <th class="no-print">Editar</th>
+          <th title="Licencias médicas del mes">Lic.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr>
           <td></td>
           <td class="tl" colspan="2" style="color:var(--ink3)">% del día</td>
-          ${totRow}<td colspan="5"></td>
+          ${totRow}<td colspan="5"></td><td></td>
         </tr></tfoot>
       </table>
     </div>`;
@@ -1692,10 +1825,17 @@ function renderListado() {
   const courseSections=activeCourses.map(course=>{
     const {students,totalDays,avgPct,esp,rei,gra,cri}=courseData[course];
     const sorted=[...students].sort((a,b)=>(a.num_lista||999)-(b.num_lista||999));
+    const listCanDetail=isAdmin()||isReadOnly()||isLic();
     const tbRows=sorted.map(({nombre,rut,pres,act,num_lista})=>{
       const p=act>0?pres/act:0;
       const aus=act-pres;
       const est=estado(p);
+      const lt=getLicTotal(rut);
+      const licCell=lt.count>0
+        ?(listCanDetail
+          ?`<span class="el" onclick="openLicList('${rut}','${nombre.replace(/'/g,"\\'")}','')" style="cursor:pointer" title="${lt.days} días justificados">${lt.count} lic · ${lt.days}d</span>`
+          :`<span class="el" title="${lt.days} días justificados">${lt.count} lic · ${lt.days}d</span>`)
+        :`<span class="el0">—</span>`;
       return `<tr>
         <td style="text-align:center;font-family:var(--fd);font-size:11px;font-weight:700;color:var(--ink3);width:28px">${num_lista||'—'}</td>
         <td class="nc">${nombre}</td>
@@ -1705,6 +1845,7 @@ function renderListado() {
         <td style="text-align:center;color:var(--ink3);font-size:10px">${act}</td>
         <td class="pc" style="color:${pColor(p)};font-weight:700;font-size:12px">${(p*100).toFixed(1)}%</td>
         <td style="text-align:center"><span class="eb ${est.c}">${est.l}</span></td>
+        <td style="text-align:center;padding:2px 5px">${licCell}</td>
       </tr>`;
     }).join('');
 
@@ -1732,6 +1873,7 @@ function renderListado() {
             <th title="Días hábiles cursados">Días</th>
             <th>% Acum.</th>
             <th>Estado</th>
+            <th title="Licencias médicas acumuladas">Lic.</th>
           </tr></thead>
           <tbody>${tbRows}</tbody>
         </table>
@@ -1863,10 +2005,17 @@ function renderAcumulado() {
       font-size:9px;padding:0 2px;font-family:var(--fb)">${lbl} ${dir}</button>`;
   };
 
+  const canDetail=isAdmin()||isReadOnly()||isLic();
   const rows=sorted.map((s,i)=>{
     const pct=s.act>0?s.pres/s.act:0;
     const aus=s.act-s.pres;
     const est=estado(pct);
+    const lt=getLicTotal(s.rut);
+    const licCell=lt.count>0
+      ?(canDetail
+        ?`<span class="el" onclick="openLicList('${s.rut}','${s.nombre.replace(/'/g,"\\'")}','')" style="cursor:pointer" title="${lt.days} días">${lt.count} lic · ${lt.days}d</span>`
+        :`<span class="el" title="${lt.days} días justificados">${lt.count} lic · ${lt.days}d</span>`)
+      :`<span class="el0">—</span>`;
     return `<tr>
       <td style="text-align:center;font-size:10px;color:var(--ink3);width:28px">${i+1}</td>
       <td class="nc">${s.nombre}</td>
@@ -1875,6 +2024,7 @@ function renderAcumulado() {
       <td style="text-align:center;font-family:var(--fd);font-weight:700;color:var(--red)">${aus}</td>
       <td style="text-align:center;font-family:var(--fd);font-weight:700;color:${pColor(pct)}">${(pct*100).toFixed(1)}%</td>
       <td style="text-align:center"><span class="eb ${est.c}">${est.l}</span></td>
+      <td style="text-align:center;padding:2px 5px">${licCell}</td>
     </tr>`;
   }).join('');
 
@@ -1935,6 +2085,7 @@ function renderAcumulado() {
           <th>${sBtn('aus','Ausentes')}</th>
           <th>${sBtn('pct','%')}</th>
           <th>Estado</th>
+          <th title="Licencias médicas acumuladas">Lic.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr>
@@ -1943,6 +2094,7 @@ function renderAcumulado() {
           <td style="color:var(--red)">${totA2-totP}</td>
           <td style="color:${pColor(totPct)};font-size:13px">${(totPct*100).toFixed(1)}%</td>
           <td><span class="eb ${totEst.c}">${totEst.l}</span></td>
+          <td></td>
         </tr></tfoot>
       </table>
     </div>`;
@@ -2042,6 +2194,21 @@ function drawCharts(data) {
     return students.length?parseFloat((c/students.length*100).toFixed(1)):0;
   });
 
+  // Plugin: % directo sobre cada punto de la línea (visible al imprimir)
+  const linePctPlugin=[{id:'linePct',afterDatasetsDraw(chart){
+    const{ctx}=chart;
+    const meta=chart.getDatasetMeta(0);
+    meta.data.forEach((pt,i)=>{
+      const val=chart.data.datasets[0].data[i];
+      if(val==null) return;
+      ctx.save();
+      ctx.fillStyle='#3D52A0'; ctx.font='bold 9px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillText(val+'%', pt.x, pt.y-5);
+      ctx.restore();
+    });
+  }}];
+
   const ctxL=document.getElementById('cl');
   if(ctxL) charts.l=new Chart(ctxL,{type:'line',
     data:{labels:dayNums.map((d,i)=>bs.has(i)?d+'🔒':d),
@@ -2050,7 +2217,8 @@ function drawCharts(data) {
         pointRadius:3,tension:.3,fill:true,borderWidth:2,spanGaps:true}]},
     options:{...base,scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
       x:{ticks:{font:{family:F,size:10}},grid:{display:false}}},
-      plugins:{...base.plugins,tooltip:{callbacks:{label:c=>c.parsed.y!=null?c.parsed.y+'%':'Bloqueado'}}}}});
+      plugins:{...base.plugins,tooltip:{callbacks:{label:c=>c.parsed.y!=null?c.parsed.y+'%':'Bloqueado'}}}},
+    plugins:linePctPlugin});
 
   const srtd=students.map(s=>{
     const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
@@ -2058,27 +2226,61 @@ function drawCharts(data) {
   });
   const dist=[srtd.filter(p=>p>=90).length,srtd.filter(p=>p>=85&&p<90).length,
     srtd.filter(p=>p>=50&&p<75).length,srtd.filter(p=>p<50).length];
+  // Plugin: % directo en cada segmento del donut (visible al imprimir sin hover)
+  const donutPctPlugin=[{id:'donutPct',afterDatasetsDraw(chart){
+    const{ctx}=chart, meta=chart.getDatasetMeta(0);
+    const total=chart.data.datasets[0].data.reduce((a,b)=>a+b,0);
+    if(!total) return;
+    meta.data.forEach((arc,i)=>{
+      const val=chart.data.datasets[0].data[i]; if(!val) return;
+      const pct=((val/total)*100).toFixed(1)+'%';
+      const mid=(arc.startAngle+arc.endAngle)/2;
+      const r=(arc.innerRadius+arc.outerRadius)/2;
+      ctx.save();
+      ctx.fillStyle='#fff'; ctx.font='bold 11px sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(pct, arc.x+r*Math.cos(mid), arc.y+r*Math.sin(mid));
+      ctx.restore();
+    });
+  }}];
+
   const ctxD=document.getElementById('cd');
   if(ctxD) charts.d=new Chart(ctxD,{type:'doughnut',
     data:{labels:['Esperada','Reiterada','Grave','Crítica'],
       datasets:[{data:dist,backgroundColor:['#2D7A4F','#3D52A0','#C47A1A','#B5291C'],borderWidth:0,hoverOffset:4}]},
-    options:{...base,cutout:'62%',plugins:{legend:{position:'right',labels:{font:{family:F,size:11},boxWidth:12,padding:10}}}}});
+    options:{...base,cutout:'62%',plugins:{legend:{position:'right',labels:{font:{family:F,size:11},boxWidth:12,padding:10}}}},
+    plugins:donutPctPlugin});
 
-  const sorted=[...students].map(s=>{
+  const sorted=[...students].map((s,idx)=>{
     const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
     const p=act>0?parseFloat((pr/act*100).toFixed(1)):0;
     const parts=s.nombre.trim().split(' ');
-    return{n:(parts[0]||'')+' '+(parts[1]||''),p};
+    const shortName=(parts[0]||'')+' '+(parts[1]||'');
+    return{n:shortName,anon:`Alumno ${idx+1}`,p};
   }).sort((a,b)=>a.p-b.p);
   const ctxB=document.getElementById('cb');
   if(ctxB&&sorted.length){
+    const isAnon=isDocente()||isPie();
     const colors=sorted.map(s=>s.p>=90?'#2D7A4F':s.p>=85?'#3D52A0':s.p>=50?'#C47A1A':'#B5291C');
+    // Plugin: % directo sobre cada barra (visible al imprimir sin hover)
+    const barLabelPlugin=[{id:'barPct',afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val=chart.data.datasets[0].data[i];
+        ctx.save();
+        ctx.fillStyle='#3D3D3D'; ctx.font='bold 10px sans-serif';
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText(val+'%', bar.x+5, bar.y);
+        ctx.restore();
+      });
+    }}];
     charts.b=new Chart(ctxB,{type:'bar',
-      data:{labels:sorted.map(s=>s.n),datasets:[{label:'%',data:sorted.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
+      data:{labels:sorted.map((s,i)=>isAnon?`Alumno ${i+1}`:s.n),datasets:[{label:'%',data:sorted.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
       options:{...base,indexAxis:'y',scales:{
         x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
         y:{ticks:{font:{family:F,size:10},color:'#1C1C1E'},grid:{display:false}}},
-        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.x+'%'}}}}});
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.x+'%'}}}},
+      plugins:barLabelPlugin});
   }
 }
 
@@ -3048,6 +3250,499 @@ async function generateReport(selectedMonthKeys) {
     console.error(e);
     console.error('generateReport error:', e);
     toast('Error al generar el informe: '+e.message,'err');
+  }
+}
+
+// ── LICENCIAS MÉDICAS ─────────────────────────────────────────────────────────
+function getLicArr(rut) { return fbFix(db['_lic']?.[rut]) || []; }
+
+function getLicForMonth(rut, yr, mn) {
+  const mEnd = new Date(yr, mn, 0), mStart = new Date(yr, mn-1, 1);
+  return getLicArr(rut).filter(l => {
+    const s = new Date(l.fecha_inicio), e = new Date(l.fecha_fin);
+    return s <= mEnd && e >= mStart;
+  });
+}
+
+function getLicDaysInMonth(rut, yr, mn) {
+  const lics = getLicForMonth(rut, yr, mn);
+  if (!lics.length) return { count: 0, days: 0 };
+  const mStart = new Date(yr, mn-1, 1), mEnd = new Date(yr, mn, 0);
+  let days = 0;
+  lics.forEach(l => {
+    const s = new Date(Math.max(new Date(l.fecha_inicio), mStart));
+    const e = new Date(Math.min(new Date(l.fecha_fin), mEnd));
+    const d = Math.round((e - s) / 86400000) + 1;
+    if (d > 0) days += d;
+  });
+  return { count: lics.length, days };
+}
+
+function getLicTotal(rut) {
+  const all = getLicArr(rut);
+  if (!all.length) return { count: 0, days: 0 };
+  let days = 0;
+  all.forEach(l => {
+    const d = Math.round((new Date(l.fecha_fin) - new Date(l.fecha_inicio)) / 86400000) + 1;
+    if (d > 0) days += d;
+  });
+  return { count: all.length, days };
+}
+
+function openLicModal(prefillRut, prefillNombre, prefillCurso) {
+  // Poblar selector de cursos con los meses activos
+  const sel = document.getElementById('lic-curso');
+  sel.innerHTML = '<option value="">— Selecciona curso —</option>' +
+    COURSES.filter(c => monthsForYear(activeYear).some(m => db[m.name]?.[c]))
+      .map(c => `<option value="${c}"${prefillCurso===c?' selected':''}>${c}</option>`).join('');
+  document.getElementById('lic-alumno').innerHTML = '<option value="">— Selecciona curso primero —</option>';
+  document.getElementById('lic-apoderado').value = '';
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('lic-entrega').value = today;
+  document.getElementById('lic-inicio').value = '';
+  document.getElementById('lic-fin').value = '';
+  document.getElementById('lic-dias-info').style.display = 'none';
+  document.getElementById('lic-err').style.display = 'none';
+  document.getElementById('ov-lic').classList.add('show');
+  if (prefillCurso) { sel.value = prefillCurso; licCursoChange(prefillRut); }
+}
+
+function licCursoChange(selectRut) {
+  const curso = document.getElementById('lic-curso').value;
+  const sel = document.getElementById('lic-alumno');
+  if (!curso) { sel.innerHTML = '<option value="">— Selecciona curso primero —</option>'; return; }
+  // Collect unique students from all months for this course
+  const map = {};
+  monthsForYear(activeYear).forEach(m => {
+    (db[m.name]?.[curso]?.students || []).forEach(s => {
+      if (!map[s.rut]) map[s.rut] = s.nombre;
+    });
+  });
+  const opts = Object.entries(map).sort((a,b) => a[1].localeCompare(b[1]))
+    .map(([rut, nom]) => `<option value="${rut}"${selectRut===rut?' selected':''}>${nom}</option>`);
+  sel.innerHTML = '<option value="">— Selecciona alumno —</option>' + opts.join('');
+}
+
+function licActualizarDias() {
+  const ini = document.getElementById('lic-inicio').value;
+  const fin = document.getElementById('lic-fin').value;
+  const info = document.getElementById('lic-dias-info');
+  if (!ini || !fin) { info.style.display = 'none'; return; }
+  const d = Math.round((new Date(fin) - new Date(ini)) / 86400000) + 1;
+  if (d < 1) { info.style.display = 'none'; return; }
+  info.textContent = `📅 La licencia cubre ${d} día${d!==1?'s':''} calendario`;
+  info.style.display = 'block';
+}
+
+let _licListRut=null, _licListNombre='', _licListCurso='', _licEditId=null;
+
+function openLicList(rut, nombre, curso) {
+  _licListRut=rut; _licListNombre=nombre; _licListCurso=curso;
+  renderLicList();
+  if(!canEnterLic()) document.getElementById('ll-add-btn').style.display='none';
+  else document.getElementById('ll-add-btn').style.display='';
+  document.getElementById('ov-lic-list').classList.add('show');
+}
+
+function openLicFromList() {
+  closeOv('ov-lic-list');
+  _licEditId=null;
+  openLicModal(_licListRut, _licListNombre, _licListCurso);
+}
+
+function renderLicList() {
+  document.getElementById('ll-titulo').textContent='🏥 ' + _licListNombre.split(' ').slice(0,3).join(' ');
+  const all = fbFix(db['_lic']?.[_licListRut]) || [];
+  const body = document.getElementById('ll-body');
+  if (!all.length) {
+    body.innerHTML='<p style="color:var(--ink3);font-size:13px;padding:12px 0">Sin licencias registradas para este alumno.</p>';
+    return;
+  }
+  const sorted=[...all].sort((a,b)=>a.fecha_inicio.localeCompare(b.fecha_inicio));
+  body.innerHTML=sorted.map(l=>{
+    const dias=Math.round((new Date(l.fecha_fin)-new Date(l.fecha_inicio))/86400000)+1;
+    const fmtDate=d=>d?d.split('-').reverse().join('/'):'—';
+    const actions=canEnterLic()?`
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="editLicEntry('${_licListRut}',${l.id})" class="btn b-o" style="font-size:11px;padding:3px 10px">✏️ Editar</button>
+        <button onclick="deleteLic('${_licListRut}',${l.id})" class="btn b-r" style="font-size:11px;padding:3px 10px">🗑 Eliminar</button>
+      </div>`:'';
+    return `<div style="border:1px solid var(--rule);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--ink)">${l.curso}</div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">Apoderado: <strong style="color:var(--ink)">${l.apoderado}</strong></div>
+          <div style="font-size:12px;color:var(--ink3);margin-top:2px">
+            Período: <strong style="color:var(--acc)">${fmtDate(l.fecha_inicio)} → ${fmtDate(l.fecha_fin)}</strong>
+            <span style="margin-left:8px;background:var(--as);color:var(--acc);border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">${dias} día${dias!==1?'s':''}</span>
+          </div>
+          <div style="font-size:11px;color:var(--ink3);margin-top:2px">Entregada: ${fmtDate(l.fecha_entrega)}</div>
+        </div>
+      </div>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+
+function deleteLic(rut, id) {
+  if(!canEnterLic()) return;
+  if(!confirm('¿Eliminar esta licencia? Esta acción no se puede deshacer.')) return;
+  if(!db['_lic']?.[rut]) return;
+  db['_lic'][rut]=getLicArr(rut).filter(l=>l.id!==id);
+  saveDB();
+  renderLicList();
+  renderMain();
+  toast('Licencia eliminada','ok');
+}
+
+function editLicEntry(rut, id) {
+  const lic=(fbFix(db['_lic']?.[rut])||[]).find(l=>l.id===id);
+  if(!lic) return;
+  _licEditId=id;
+  closeOv('ov-lic-list');
+  // Populate modal
+  const sel=document.getElementById('lic-curso');
+  sel.innerHTML='<option value="">— Selecciona curso —</option>'+
+    COURSES.filter(c=>monthsForYear(activeYear).some(m=>db[m.name]?.[c]))
+      .map(c=>`<option value="${c}"${lic.curso===c?' selected':''}>${c}</option>`).join('');
+  licCursoChange(rut);
+  document.getElementById('lic-apoderado').value=lic.apoderado||'';
+  document.getElementById('lic-entrega').value=lic.fecha_entrega||'';
+  document.getElementById('lic-inicio').value=lic.fecha_inicio||'';
+  document.getElementById('lic-fin').value=lic.fecha_fin||'';
+  document.getElementById('lic-err').style.display='none';
+  licActualizarDias();
+  document.getElementById('ov-lic').classList.add('show');
+}
+
+function saveLic() {
+  const entrega  = document.getElementById('lic-entrega').value;
+  const curso    = document.getElementById('lic-curso').value;
+  const alumnoEl = document.getElementById('lic-alumno');
+  const rut      = alumnoEl.value;
+  const nombre   = alumnoEl.options[alumnoEl.selectedIndex]?.text || '';
+  const apod     = document.getElementById('lic-apoderado').value.trim();
+  const ini      = document.getElementById('lic-inicio').value;
+  const fin      = document.getElementById('lic-fin').value;
+  const err      = document.getElementById('lic-err');
+
+  if (!entrega || !curso || !rut || !apod || !ini || !fin) {
+    err.textContent = 'Completa todos los campos'; err.style.display = 'block'; return;
+  }
+  if (fin < ini) {
+    err.textContent = 'La fecha de fin no puede ser anterior al inicio'; err.style.display = 'block'; return;
+  }
+  err.style.display = 'none';
+
+  if (!db['_lic']) db['_lic'] = {};
+  // Normalizar: Firebase convierte arrays a objetos con claves numéricas
+  db['_lic'][rut] = getLicArr(rut);
+  const dias = Math.round((new Date(fin) - new Date(ini)) / 86400000) + 1;
+
+  if (_licEditId) {
+    const idx = db['_lic'][rut].findIndex(l => l.id === _licEditId);
+    if (idx !== -1) db['_lic'][rut][idx] = { id: _licEditId, curso, nombre, apoderado: apod, fecha_entrega: entrega, fecha_inicio: ini, fecha_fin: fin };
+    _licEditId = null;
+    toast(`Licencia actualizada — ${dias} día${dias!==1?'s':''} ✓`, 'ok');
+  } else {
+    db['_lic'][rut].push({ id: Date.now(), curso, nombre, apoderado: apod, fecha_entrega: entrega, fecha_inicio: ini, fecha_fin: fin });
+    toast(`Licencia guardada — ${dias} día${dias!==1?'s':''} justificados ✓`, 'ok');
+  }
+  saveDB();
+  closeOv('ov-lic');
+  renderMain();
+}
+
+// ── INFORME SEMESTRAL HTML ────────────────────────────────────────────────────
+function rpGenerateSemester(){
+  const selected=Array.from(document.querySelectorAll('#rp-month-list input:checked')).map(c=>c.value);
+  if(!selected.length){toast('Selecciona al menos un mes','err');return;}
+  closeOv('ov-report');
+  generateSemesterReport(selected);
+}
+
+async function generateSemesterReport(selectedMonthKeys){
+  toast('Generando informe semestral...');
+  try {
+    const allMonths=monthsForYear(activeYear).filter(m=>db[m.name]);
+    const months=selectedMonthKeys?allMonths.filter(m=>selectedMonthKeys.includes(m.name)):allMonths;
+    if(!months.length){toast('Sin datos para los meses seleccionados','err');return;}
+
+    const today=new Date();
+    const todayCut=new Date(); todayCut.setHours(23,59,59,999);
+    const dateStr=today.toLocaleDateString('es-CL',{day:'2-digit',month:'long',year:'numeric'});
+
+    // ── Agregar datos ──────────────────────────────────────────────────────────
+    const courseAgg={};
+    COURSES.forEach(c=>{courseAgg[c]={totalPres:0,totalAct:0,esp:0,rei:0,gra:0,cri:0,mat:0};});
+    const monthRows=[];
+    const critMap={};
+
+    months.forEach(m=>{
+      let mPctSum=0,mCourses=0,mEsp=0,mRei=0,mGra=0,mCri=0,mTot=0;
+      COURSES.forEach(c=>{
+        const d=db[m.name]?.[c]; if(!d||!d.students?.length) return;
+        const parts=m.name.split(' '),yr=parseInt(parts[parts.length-1]);
+        const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+        const st=calcStats(d.students,d.headers,d.blocked,d.dayNums,yr,mn);
+        courseAgg[c].totalPres+=st.totalPres; courseAgg[c].totalAct+=st.totalAct;
+        courseAgg[c].esp+=st.esp; courseAgg[c].rei+=st.rei;
+        courseAgg[c].gra+=st.gra; courseAgg[c].cri+=st.cri;
+        courseAgg[c].mat=Math.max(courseAgg[c].mat,d.students.length);
+        if(st.totalAct>0){mPctSum+=st.totalPres/st.totalAct; mCourses++;}
+        mEsp+=st.esp; mRei+=st.rei; mGra+=st.gra; mCri+=st.cri; mTot+=st.tot;
+        const bs=new Set(d.blocked||[]), dn=d.dayNums||d.headers.map((_,i)=>i+1);
+        d.students.forEach(s=>{
+          let pre=0,act=0;
+          d.headers.forEach((_,i)=>{
+            if(bs.has(i)) return;
+            const dt=new Date(yr,mn-1,dn[i]||i+1); if(dt>todayCut) return;
+            const dst=dayStatus(s,i,dn,yr,mn);
+            if(excluido(dst)) return; act++;
+            if(dst==='present') pre++;
+          });
+          const p=act>0?pre/act:0;
+          if(p<0.5){
+            const k=s.rut+'_'+c;
+            if(!critMap[k]) critMap[k]={nombre:s.nombre,rut:s.rut,curso:c,meses:[]};
+            critMap[k].meses.push(m.label+': '+(p*100).toFixed(1)+'%');
+          }
+        });
+      });
+      monthRows.push({label:m.label,pct:mCourses>0?mPctSum/mCourses:0,esp:mEsp,rei:mRei,gra:mGra,cri:mCri,tot:mTot});
+    });
+
+    const activeCourses=COURSES.filter(c=>courseAgg[c].totalAct>0);
+    const globalPct=activeCourses.length>0
+      ?activeCourses.reduce((s,c)=>s+(courseAgg[c].totalAct>0?courseAgg[c].totalPres/courseAgg[c].totalAct:0),0)/activeCourses.length
+      :0;
+    const totalMat=activeCourses.reduce((s,c)=>s+courseAgg[c].mat,0);
+    const critList=Object.values(critMap).sort((a,b)=>a.curso.localeCompare(b.curso));
+    const totalEsp=activeCourses.reduce((s,c)=>s+courseAgg[c].esp,0);
+    const totalRei=activeCourses.reduce((s,c)=>s+courseAgg[c].rei,0);
+    const totalGra=activeCourses.reduce((s,c)=>s+courseAgg[c].gra,0);
+    const totalCri=activeCourses.reduce((s,c)=>s+courseAgg[c].cri,0);
+
+    const pColor=p=>p>=0.9?'#2B6A3E':p>=0.85?'#1A4B8C':p>=0.5?'#B35A00':'#9A1C1C';
+    const pBg   =p=>p>=0.9?'#F0FDF4':p>=0.85?'#EFF6FF':p>=0.5?'#FFF7ED':'#FFF0F0';
+    const pLabel=p=>p>=0.9?'Esperada':p>=0.85?'Reiterada':p>=0.5?'Grave':'Crítica';
+    const pctG=(globalPct*100).toFixed(1);
+    const sortedM=[...monthRows].sort((a,b)=>a.pct-b.pct);
+    const worstM=sortedM[0], bestM=sortedM[sortedM.length-1];
+    const periodStr=months.map(m=>m.label).join(' – ');
+
+    const chartData={
+      courses:activeCourses,
+      coursePcts:activeCourses.map(c=>parseFloat((courseAgg[c].totalAct>0?courseAgg[c].totalPres/courseAgg[c].totalAct*100:0).toFixed(1))),
+      courseColors:activeCourses.map(c=>{const p=courseAgg[c].totalAct>0?courseAgg[c].totalPres/courseAgg[c].totalAct:0;return pColor(p);}),
+      monthLabels:monthRows.map(m=>m.label),
+      monthPcts:monthRows.map(m=>parseFloat((m.pct*100).toFixed(1))),
+      donut:[totalEsp,totalRei,totalGra,totalCri]
+    };
+
+    const barH=Math.max(220,activeCourses.length*30);
+
+    const courseRows=activeCourses.map(c=>{
+      const d=courseAgg[c]; const p=d.totalAct>0?d.totalPres/d.totalAct:0;
+      return `<tr><td style="text-align:left;padding:6px 10px">${c}</td><td>${d.mat}</td>`+
+        `<td style="font-weight:700;color:${pColor(p)}">${(p*100).toFixed(1)}%</td>`+
+        `<td><span style="background:${pBg(p)};color:${pColor(p)};border-radius:4px;padding:1px 8px;font-size:10px;font-weight:700">${pLabel(p)}</span></td>`+
+        `<td style="color:#2B6A3E">${d.esp}</td><td style="color:#1A4B8C">${d.rei}</td>`+
+        `<td style="color:#B35A00">${d.gra}</td>`+
+        `<td style="color:${d.cri>0?'#9A1C1C':'#18181B'};font-weight:${d.cri>0?700:400}">${d.cri}</td></tr>`;
+    }).join('');
+
+    const monthRowsHTML=monthRows.map(m=>{
+      return `<tr><td style="text-align:left;padding:6px 10px">${m.label}</td><td>${m.tot}</td>`+
+        `<td style="font-weight:700;color:${pColor(m.pct)}">${(m.pct*100).toFixed(1)}%</td>`+
+        `<td style="color:#2B6A3E">${m.esp}</td><td style="color:#1A4B8C">${m.rei}</td>`+
+        `<td style="color:#B35A00">${m.gra}</td>`+
+        `<td style="color:${m.cri>0?'#9A1C1C':'#18181B'};font-weight:${m.cri>0?700:400}">${m.cri}</td></tr>`;
+    }).join('');
+
+    const critRowsHTML=critList.map(s=>
+      `<tr><td style="text-align:left;padding:6px 10px">${s.nombre}</td><td>${s.rut}</td>`+
+      `<td>${s.curso}</td><td style="text-align:left;color:#9A1C1C;font-size:11px">${s.meses.join(' | ')}</td></tr>`
+    ).join('');
+
+    // Conclusiones
+    let conc1='';
+    if(globalPct>=0.9) conc1=`La Escuela México alcanzó una asistencia global del ${pctG}% en el período analizado, posicionándose en el tramo de <strong>Asistencia Esperada (≥90%)</strong>. Este resultado refleja el compromiso sostenido de la comunidad escolar y la eficacia de los mecanismos de convocatoria implementados.`;
+    else if(globalPct>=0.85) conc1=`La asistencia global del establecimiento alcanza el ${pctG}%, ubicándose en el tramo de <strong>Asistencia Reiterada (≥85%)</strong>. Se recomienda intensificar las estrategias de seguimiento y comunicación con las familias para alcanzar el estándar del 90%.`;
+    else if(globalPct>=0.5) conc1=`La asistencia global alcanza el ${pctG}%, configurando una situación de <strong>Inasistencia Grave</strong>. Es imperativo implementar protocolos de intervención y activar redes de apoyo conforme a la normativa MINEDUC.`;
+    else conc1=`La asistencia global es del ${pctG}%, lo que constituye una situación <strong>Crítica</strong>. Se requiere activación inmediata del protocolo de inasistencia reiterada.`;
+
+    let concIdx=2;
+    let concExtra='';
+    if(critList.length>0){
+      concExtra+=`<div class="ci"><div class="cn">${concIdx++}</div><div class="ct">Se identifican <strong>${critList.length} estudiante(s)</strong> con inasistencia crítica (&lt;50%). Requieren activación del protocolo de inasistencia, participación del equipo directivo, orientación y familias, conforme al Decreto N°67.</div></div>`;
+    }
+    if(worstM&&bestM&&worstM.label!==bestM.label){
+      concExtra+=`<div class="ci"><div class="cn">${concIdx++}</div><div class="ct"><strong>${worstM.label}</strong> presentó la menor asistencia del período (${(worstM.pct*100).toFixed(1)}%), mientras que <strong>${bestM.label}</strong> alcanzó el mejor resultado (${(bestM.pct*100).toFixed(1)}%). Se recomienda analizar los factores que incidieron en estas variaciones para orientar acciones preventivas en el segundo semestre.</div></div>`;
+    }
+    concExtra+=`<div class="ci"><div class="cn">${concIdx}</div><div class="ct">Se recomienda mantener el registro sistemático y verificable de asistencia, fortalecer los canales de comunicación con las familias de estudiantes con ausentismo recurrente, y generar instancias de análisis mensual entre el equipo directivo, inspectoría y los docentes jefe de cada curso.</div></div>`;
+
+    const html=`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Informe Semestral — Escuela México ${activeYear}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Calibri,Arial,sans-serif;background:#fff;color:#18181B;font-size:13px}
+.page{max-width:920px;margin:0 auto;padding:44px 52px}
+.cover{text-align:center;padding:54px 0 44px;border-bottom:3px solid #3B5BDB;margin-bottom:44px}
+.cover h1{font-size:26px;font-weight:800;letter-spacing:.5px;margin-bottom:5px}
+.cover h2{font-size:13px;font-weight:400;color:#52525B;margin-bottom:20px}
+.badge{display:inline-block;background:#3B5BDB;color:#fff;font-weight:700;font-size:14px;border-radius:8px;padding:6px 22px;margin-bottom:20px;letter-spacing:.5px}
+.meta{font-size:11.5px;color:#71717A;line-height:2.1}
+.meta strong{color:#52525B}
+.sec{margin-bottom:40px}
+.st{font-size:13px;font-weight:700;color:#18181B;border-left:4px solid #3B5BDB;padding-left:10px;margin-bottom:14px;text-transform:uppercase;letter-spacing:.3px}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{border:1px solid #E4E4E7;border-radius:10px;padding:14px;text-align:center}
+.kv{font-size:26px;font-weight:800;line-height:1;margin-bottom:4px}
+.kl{font-size:10px;color:#71717A;text-transform:uppercase;letter-spacing:.5px}
+.cg{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-bottom:24px}
+.ct2{display:grid;grid-template-columns:1fr 2fr;gap:22px;align-items:center}
+.ch{font-size:11px;font-weight:600;color:#52525B;margin-bottom:8px;text-align:center}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#F4F4F5;color:#52525B;font-weight:600;padding:7px 10px;text-align:center;border:1px solid #E4E4E7;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px}
+td{padding:5px 10px;border:1px solid #E4E4E7;text-align:center;vertical-align:middle}
+tr:nth-child(even) td{background:#FAFAFA}
+.ci{display:flex;gap:10px;margin-bottom:12px;align-items:flex-start}
+.cn{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#3B5BDB;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.ct{color:#3D3D3D;line-height:1.65;font-size:12.5px}
+.firma{margin-top:56px;padding-top:18px;border-top:1px solid #E4E4E7}
+.fl{width:200px;border-top:1.5px solid #18181B;margin-bottom:5px}
+.pbtn{position:fixed;bottom:24px;right:24px;background:#3B5BDB;color:#fff;border:none;border-radius:50px;padding:11px 22px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 4px 16px rgba(59,91,219,.4);z-index:999;transition:.15s}
+.pbtn:hover{background:#2f4cc0;transform:translateY(-1px)}
+@media print{
+  .pbtn{display:none!important}
+  .page{padding:18px 22px;max-width:100%}
+  .cover{padding:24px 0 24px}
+  body{font-size:11px}
+  th{font-size:9.5px;padding:5px 8px}
+  td{padding:4px 8px;font-size:11px}
+  .sec{margin-bottom:24px}
+  .cover h1{font-size:20px}
+  .kv{font-size:20px}
+  @page{margin:13mm}
+}
+</style></head>
+<body><div class="page">
+
+<div class="cover">
+  <h1>ESCUELA MÉXICO</h1>
+  <h2>Agua de la Gloria, Concepción &nbsp;·&nbsp; Inspectoría General</h2>
+  <div class="badge">INFORME SEMESTRAL DE ASISTENCIA</div><br>
+  <div class="meta">
+    <strong>Período analizado:</strong> ${periodStr} &nbsp;|&nbsp; <strong>Año Lectivo:</strong> ${activeYear}<br>
+    <strong>Elaborado por:</strong> Marcelo Martínez Fernández &nbsp;|&nbsp; <strong>Cargo:</strong> Inspector General<br>
+    <strong>Fecha de emisión:</strong> ${dateStr} &nbsp;|&nbsp; <strong>Carácter:</strong> Oficial — Uso Interno
+  </div>
+</div>
+
+<div class="sec">
+  <div class="st">1. Resumen Ejecutivo</div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kv" style="color:#3B5BDB">${totalMat}</div><div class="kl">Total Matrícula</div></div>
+    <div class="kpi"><div class="kv" style="color:${pColor(globalPct)}">${pctG}%</div><div class="kl">Asistencia Global</div></div>
+    <div class="kpi"><div class="kv" style="color:#2B6A3E">${bestM?(bestM.pct*100).toFixed(1)+'%':'—'}</div><div class="kl">Mejor Mes${bestM?' ('+bestM.label+')':''}</div></div>
+    <div class="kpi"><div class="kv" style="color:${critList.length>0?'#9A1C1C':'#2B6A3E'}">${critList.length}</div><div class="kl">Alumnos Críticos</div></div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="st">2. Análisis Visual</div>
+  <div class="cg">
+    <div><div class="ch">Asistencia por Curso (%)</div><div style="position:relative;height:${barH}px"><canvas id="cc"></canvas></div></div>
+    <div><div class="ch">Evolución Mensual (%)</div><div style="position:relative;height:${barH}px"><canvas id="cm"></canvas></div></div>
+  </div>
+  <div class="ct2">
+    <div><div class="ch">Distribución por Tramo</div><div style="position:relative;height:200px"><canvas id="cd"></canvas></div></div>
+    <table>
+      <thead><tr><th style="text-align:left">Tramo</th><th>Criterio</th><th>N° Alumnos</th><th>% del Total</th></tr></thead>
+      <tbody>
+        <tr><td style="text-align:left"><span style="background:#F0FDF4;color:#2B6A3E;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">Esperada</span></td><td>≥ 90%</td><td style="color:#2B6A3E;font-weight:700">${totalEsp}</td><td>${totalMat>0?((totalEsp/totalMat)*100).toFixed(1):'0.0'}%</td></tr>
+        <tr><td style="text-align:left"><span style="background:#EFF6FF;color:#1A4B8C;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">Reiterada</span></td><td>≥ 85%</td><td style="color:#1A4B8C;font-weight:700">${totalRei}</td><td>${totalMat>0?((totalRei/totalMat)*100).toFixed(1):'0.0'}%</td></tr>
+        <tr><td style="text-align:left"><span style="background:#FFF7ED;color:#B35A00;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">Grave</span></td><td>≥ 50%</td><td style="color:#B35A00;font-weight:700">${totalGra}</td><td>${totalMat>0?((totalGra/totalMat)*100).toFixed(1):'0.0'}%</td></tr>
+        <tr><td style="text-align:left"><span style="background:#FFF0F0;color:#9A1C1C;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:700">Crítica</span></td><td>&lt; 50%</td><td style="color:${totalCri>0?'#9A1C1C':'#18181B'};font-weight:700">${totalCri}</td><td>${totalMat>0?((totalCri/totalMat)*100).toFixed(1):'0.0'}%</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="st">3. Detalle por Curso</div>
+  <table>
+    <thead><tr><th style="text-align:left">Curso</th><th>Matrícula</th><th>% Asistencia</th><th>Tramo</th><th style="color:#2B6A3E">Esperada</th><th style="color:#1A4B8C">Reiterada</th><th style="color:#B35A00">Grave</th><th style="color:#9A1C1C">Crítica</th></tr></thead>
+    <tbody>${courseRows}</tbody>
+    <tfoot><tr style="background:#F4F4F5;font-weight:700">
+      <td style="text-align:left;padding:6px 10px">TOTAL ESTABLECIMIENTO</td><td>${totalMat}</td>
+      <td style="color:${pColor(globalPct)}">${pctG}%</td><td></td>
+      <td style="color:#2B6A3E">${totalEsp}</td><td style="color:#1A4B8C">${totalRei}</td>
+      <td style="color:#B35A00">${totalGra}</td><td style="color:${totalCri>0?'#9A1C1C':'#18181B'}">${totalCri}</td>
+    </tr></tfoot>
+  </table>
+</div>
+
+<div class="sec">
+  <div class="st">4. Detalle Mensual</div>
+  <table>
+    <thead><tr><th style="text-align:left">Mes</th><th>Total Alumnos</th><th>% Asistencia</th><th style="color:#2B6A3E">Esperada</th><th style="color:#1A4B8C">Reiterada</th><th style="color:#B35A00">Grave</th><th style="color:#9A1C1C">Crítica</th></tr></thead>
+    <tbody>${monthRowsHTML}</tbody>
+  </table>
+</div>
+
+${critList.length>0?`
+<div class="sec">
+  <div class="st" style="border-color:#9A1C1C;color:#9A1C1C">5. Estudiantes con Inasistencia Crítica</div>
+  <p style="font-size:12px;color:#52525B;margin-bottom:10px">Asistencia inferior al 50% en al menos un mes. Requieren activación del protocolo de inasistencia conforme al Decreto N°67.</p>
+  <table>
+    <thead><tr><th style="text-align:left;background:#FFF0F0;color:#9A1C1C">Nombre</th><th style="background:#FFF0F0;color:#9A1C1C">RUT</th><th style="background:#FFF0F0;color:#9A1C1C">Curso</th><th style="text-align:left;background:#FFF0F0;color:#9A1C1C">Detalle por Mes</th></tr></thead>
+    <tbody>${critRowsHTML}</tbody>
+  </table>
+</div>`:`
+<div class="sec">
+  <div class="st" style="border-color:#2B6A3E;color:#2B6A3E">5. Estudiantes con Inasistencia Crítica</div>
+  <p style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:13px;color:#2B6A3E;font-size:13px">✓ No se registran estudiantes con inasistencia crítica (&lt;50%) en el período analizado. Este resultado es indicador de una gestión preventiva efectiva.</p>
+</div>`}
+
+<div class="sec">
+  <div class="st">6. Conclusiones y Recomendaciones</div>
+  <div class="ci"><div class="cn">1</div><div class="ct">${conc1}</div></div>
+  ${concExtra}
+</div>
+
+<div class="firma">
+  <div class="fl"></div>
+  <div style="font-weight:700;font-size:13px">Marcelo Martínez Fernández</div>
+  <div style="color:#52525B;font-size:12px">Inspector General</div>
+  <div style="color:#52525B;font-size:12px">Escuela México · Agua de la Gloria</div>
+  <div style="color:#A1A1AA;font-size:11px;margin-top:2px">${dateStr}</div>
+</div>
+
+</div>
+<button class="pbtn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+<script>
+const CD=${JSON.stringify(chartData)};
+window.addEventListener('load',function(){
+  new Chart(document.getElementById('cc'),{type:'bar',data:{labels:CD.courses,datasets:[{label:'%',data:CD.coursePcts,backgroundColor:CD.courseColors.map(c=>c+'22'),borderColor:CD.courseColors,borderWidth:2,borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw+'%'}}},scales:{x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#F0F0F0'}},y:{ticks:{font:{size:10}}}}}});
+  new Chart(document.getElementById('cm'),{type:'line',data:{labels:CD.monthLabels,datasets:[{label:'% Global',data:CD.monthPcts,borderColor:'#3B5BDB',backgroundColor:'rgba(59,91,219,0.08)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:'#3B5BDB',fill:true,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>' '+ctx.raw+'%'}}},scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{size:10}},grid:{color:'#F0F0F0'}},x:{ticks:{font:{size:10}}}}}});
+  new Chart(document.getElementById('cd'),{type:'doughnut',data:{labels:['Esperada ≥90%','Reiterada ≥85%','Grave ≥50%','Crítica <50%'],datasets:[{data:CD.donut,backgroundColor:['#2B6A3E','#1A4B8C','#B35A00','#9A1C1C'],borderColor:'#fff',borderWidth:3,hoverOffset:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},padding:8}},tooltip:{callbacks:{label:ctx=>' '+ctx.label+': '+ctx.raw+' alumnos'}}},cutout:'60%'}});
+});
+<\/script>
+</body></html>`;
+
+    const win=window.open('','_blank','width=1050,height=850');
+    if(!win){toast('Permite ventanas emergentes para abrir el informe','err');return;}
+    win.document.write(html);
+    win.document.close();
+    toast('Informe semestral generado ✓','ok');
+  } catch(e) {
+    console.error('generateSemesterReport error:',e);
+    toast('Error al generar el informe semestral: '+e.message,'err');
   }
 }
 
