@@ -601,6 +601,24 @@ tfoot td.tl{text-align:left}
   </div>
 </div>
 
+<div class="ov" id="ov-multiprint">
+  <div class="md" style="width:360px">
+    <h3 style="display:flex;align-items:center;gap:8px">
+      🖨️ Imprimir gráficos — <span id="mp-course-title" style="color:var(--acc)"></span>
+    </h3>
+    <p style="margin-bottom:10px;font-size:12px;color:var(--ink3)">Selecciona los meses a incluir en el PDF:</p>
+    <div id="mp-month-list" style="max-height:260px;overflow-y:auto;border:1px solid var(--rule);border-radius:var(--r)"></div>
+    <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+      <button class="btn b-o" style="font-size:10.5px;padding:3px 10px" onclick="mpToggleAll(true)">Todos</button>
+      <button class="btn b-o" style="font-size:10.5px;padding:3px 10px" onclick="mpToggleAll(false)">Ninguno</button>
+    </div>
+    <div class="ma" style="margin-top:12px">
+      <button class="btn b-o" onclick="closeOv('ov-multiprint')">Cancelar</button>
+      <button class="btn b-a" onclick="mpGenerate()">🖨️ Generar PDF</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Firebase y docx.js se cargan dinámicamente solo cuando se necesitan -->
@@ -726,6 +744,7 @@ const USERS = {
   'insp':     { pass:'insp2026',   courses:null,          role:'insp'     },
   'PIE':        { pass:'pie4614',    courses:null,          role:'pie'      },
   'secretaria': { pass:'sec4614',    courses:null,          role:'lic'      },
+  'paradocente':{ pass:'para4614',   courses:null,          role:'para'     },
   'NT':       { pass:'valecr0',    courses:['NT1','NT2'], role:'docente'  },
   '1':        { pass:'cint171',    courses:['1° Básico'], role:'docente'  },
   '2':        { pass:'patymu2',    courses:['2° Básico'], role:'docente'  },
@@ -755,8 +774,9 @@ function isDocente()      { return currentUser?.role === 'docente'; }
 function isReadOnly()     { return currentUser?.role === 'readonly'; }
 function isPie()          { return currentUser?.role === 'pie'; }
 function isLic()          { return currentUser?.role === 'lic'; }
+function isParaDoc()      { return currentUser?.role === 'para'; }
 function canEdit()        { return isAdmin() || isInsp(); }
-function canEnterLic()    { return isAdmin() || isLic(); }
+function canEnterLic()    { return isAdmin() || isLic() || isParaDoc(); }
 function allowedCourses() { return (currentUser?.courses) ? currentUser.courses : COURSES; }
 
 let editMode    = false;  // unlocked by password
@@ -1111,7 +1131,7 @@ function credUnlock() {
     document.getElementById('cred-err').style.display='block';
     document.getElementById('cred-pass').value=''; return;
   }
-  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente',pie:'PIE',lic:'Secretaría'};
+  const roleLabel={admin:'Administrador',insp:'Inspectoría',readonly:'Directivo',docente:'Docente',pie:'PIE',lic:'Secretaría',para:'Paradocente'};
   const rows=Object.entries(USERS).map(([u,d])=>{
     const courses=d.courses?d.courses.join(', '):'Todos los cursos';
     return `<tr style="border-bottom:1px solid var(--rule2)">
@@ -1430,6 +1450,7 @@ function killCharts() {
 function setSection(s) {
   if(isPie() && !['mes','acumulado','listado'].includes(s)) return;
   if(isLic() && s!=='mes' && s!=='listado') return;
+  if(isParaDoc() && s!=='mes') return;
   if((isDocente()||isInsp()) && s!=='mes' && s!=='listado') return;
   curSection=s; renderMain();
 }
@@ -1451,13 +1472,14 @@ function renderMain() {
   // Restringir secciones por rol
   if(isPie() && !['mes','acumulado','listado'].includes(curSection)) curSection='mes';
   if(isLic() && curSection!=='mes' && curSection!=='listado') curSection='mes';
+  if(isParaDoc()) { curSection='mes'; curView='table'; }
   if((isDocente()||isInsp()) && curSection!=='mes' && curSection!=='listado') curSection='mes';
 
   // Toolbar (always shown)
   const toolbar=`
     <div class="tbar">
       <div class="ttl">${label} · ${curCourse}${editMode?'':' <span style="font-size:9px;background:var(--rule2);color:var(--ink3);padding:2px 7px;border-radius:10px;font-weight:400;vertical-align:middle">👁 solo lectura</span>'}</div>
-      <div class="vt">
+      ${!isParaDoc()?`<div class="vt">
         <button class="vb${curSection==='mes'?' on':''}" onclick="setSection('mes')">📋 Mes</button>
         ${(!isDocente()&&!isInsp())?`
         <button class="vb${curSection==='acumulado'?' on':''}" onclick="setSection('acumulado')">📊 Acumulado</button>
@@ -1465,8 +1487,8 @@ function renderMain() {
         ${isAdmin()&&editMode?`<button class="vb${curSection==='tendencias'?' on':''}" onclick="setSection('tendencias')">📈 Tendencias</button>`:''}
         `:''}
         <button class="vb${curSection==='listado'?' on':''}" onclick="setSection('listado')">👥 Listado</button>
-      </div>
-      ${curSection==='mes'?`
+      </div>`:''}
+      ${curSection==='mes'&&!isParaDoc()?`
       <div class="vt">
         <button class="vb${curView==='tabla'?' on':''}"  onclick="setView('tabla')">Tabla</button>
         <button class="vb${curView==='charts'?' on':''}" onclick="setView('charts')">Gráficos</button>
@@ -1493,6 +1515,9 @@ function renderMain() {
       </button>`:''}
       ${canEnterLic()?`<button class="btn b-o no-print" onclick="openLicModal()" style="flex-shrink:0;color:#1A4B8C;border-color:rgba(26,75,140,.3)" title="Ingresar licencia médica">
         🏥 Ingresar licencia
+      </button>`:''}
+      ${curSection==='mes'&&curView==='charts'?`<button class="btn b-o no-print" onclick="openMultiPrintModal()" style="flex-shrink:0" title="Imprimir gráficos de varios meses en un PDF">
+        🖨️ Imprimir meses…
       </button>`:''}
       ${isAdmin()&&editMode?`<button class="btn b-r no-print" onclick="exitEdit()" style="flex-shrink:0" title="Salir del modo edición">
         <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1570,6 +1595,24 @@ function renderMes(data,label) {
   <div id="blocked-hint" class="hint no-print" style="display:${blocked.length?'none':'block'}">
     <svg viewBox="0 0 24 24" style="width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;vertical-align:middle;margin-right:3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
     Clic en el número de un día para bloquearlo (feriado / suspensión)</div>`;
+
+  if(isParaDoc()){
+    const rows=students.map(s=>{
+      const ld=getLicDaysInMonth(s.rut,yr2,mn2);
+      const badge=ld.count>0
+        ?`<span class="el" onclick="openLicList('${s.rut}','${s.nombre.replace(/'/g,"\\'")}','${curCourse}')" style="cursor:pointer" title="${ld.days} días justificados">${ld.count} lic · ${ld.days}d</span>`
+        :`<span class="el0 no-print" onclick="openLicList('${s.rut}','${s.nombre.replace(/'/g,"\\'")}','${curCourse}')" style="cursor:pointer" title="Sin licencias este mes">—</span>`;
+      return `<tr><td class="nc">${s.nombre}</td><td style="padding:4px 8px;text-align:center">${badge}</td></tr>`;
+    }).join('');
+    return `${statsBar}<div style="overflow-x:auto;margin-top:8px">
+      <table class="at" style="min-width:unset">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 10px">Nombre</th>
+          <th style="text-align:center;padding:6px 10px">Licencias del mes</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  }
 
   if(curView==='charts'){
     // Licencias del mes para este curso
@@ -2217,7 +2260,7 @@ function drawCharts(data) {
         pointRadius:3,tension:.3,fill:true,borderWidth:2,spanGaps:true}]},
     options:{...base,scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
       x:{ticks:{font:{family:F,size:10}},grid:{display:false}}},
-      plugins:{...base.plugins,tooltip:{callbacks:{label:c=>c.parsed.y!=null?c.parsed.y+'%':'Bloqueado'}}}},
+      plugins:{...base.plugins,legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y!=null?c.parsed.y+'%':'Bloqueado'}}}},
     plugins:linePctPlugin});
 
   const srtd=students.map(s=>{
@@ -3451,6 +3494,201 @@ function saveLic() {
   saveDB();
   closeOv('ov-lic');
   renderMain();
+}
+
+// ── IMPRIMIR GRÁFICOS MULTI-MES ──────────────────────────────────────────────
+function openMultiPrintModal(){
+  const avail=monthsForYear(activeYear).filter(m=>db[m.name]?.[curCourse]);
+  if(!avail.length){toast('No hay meses con datos para este curso','err');return;}
+  document.getElementById('mp-course-title').textContent=curCourse;
+  const list=document.getElementById('mp-month-list');
+  list.innerHTML=avail.map(m=>`
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--rule);font-size:12px">
+      <input type="checkbox" value="${m.name}" checked style="accent-color:var(--acc)">
+      ${m.label}
+    </label>`).join('');
+  document.getElementById('ov-multiprint').classList.add('show');
+}
+function mpToggleAll(v){
+  document.querySelectorAll('#mp-month-list input').forEach(c=>c.checked=v);
+}
+function mpGenerate(){
+  const selected=Array.from(document.querySelectorAll('#mp-month-list input:checked')).map(c=>c.value);
+  if(!selected.length){toast('Selecciona al menos un mes','err');return;}
+  closeOv('ov-multiprint');
+  generateMultiChartPrint(selected);
+}
+
+function generateMultiChartPrint(selectedKeys){
+  const course=curCourse;
+  const months=monthsForYear(activeYear).filter(m=>selectedKeys.includes(m.name)&&db[m.name]?.[course]);
+  if(!months.length){toast('Sin datos','err');return;}
+
+  const sections=months.map(m=>{
+    const data=db[m.name][course];
+    const students=data.students||[];
+    const headers=data.headers||[];
+    const dayNums=data.dayNums||headers.map((_,i)=>i+1);
+    const blocked=data.blocked||[];
+    const bs=new Set(blocked);
+    const parts=m.name.split(' ');
+    const yr=parseInt(parts[parts.length-1]);
+    const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+    const today=new Date(); today.setHours(23,59,59,999);
+
+    // Stats
+    let pres=0,act=0,esp=0,rei=0,gra=0,cri=0;
+    students.forEach(s=>{
+      let sp=0,sa=0;
+      headers.forEach((_,i)=>{
+        if(bs.has(i)) return;
+        const d=new Date(yr,mn-1,dayNums[i]||i+1); if(d>today) return;
+        const dst=dayStatus(s,i,dayNums,yr,mn);
+        if(excluido(dst)) return; sa++;
+        if(dst==='present') sp++;
+      });
+      pres+=sp; act+=sa;
+      const p=sa>0?sp/sa:0;
+      if(p>=0.9)esp++; else if(p>=0.85)rei++; else if(p>=0.5)gra++; else cri++;
+    });
+    const pct=act>0?pres/act:0;
+    const pColor=p=>p>=0.9?'#2D7A4F':p>=0.85?'#1A4B8C':p>=0.5?'#C47A1A':'#B5291C';
+
+    // Daily %
+    const dpct=headers.map((_,di)=>{
+      if(bs.has(di)) return null;
+      const c=students.filter(s=>s.dias[di]).length;
+      return students.length?parseFloat((c/students.length*100).toFixed(1)):0;
+    });
+
+    // Bar data
+    const sortedBar=[...students].map(s=>{
+      const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
+      const a=headers.filter((_,i)=>!bs.has(i)).length;
+      const parts2=s.nombre.trim().split(' ');
+      return{n:(parts2[0]||'')+' '+(parts2[1]||''),p:a>0?parseFloat((pr/a*100).toFixed(1)):0};
+    }).sort((a,b)=>a.p-b.p);
+
+    const id=m.name.replace(/\s/g,'_');
+    const barH=Math.max(180,students.length*18);
+
+    return {id,label:m.label,pct,esp,rei,gra,cri,tot:students.length,dpct,dayNums,headers,blocked,sortedBar,barH,pColor};
+  });
+
+  const chartScript=sections.map(s=>`
+  (function(){
+    const F="'DM Sans',sans-serif";
+    const bs=new Set(${JSON.stringify(s.blocked)});
+    // Line
+    const linePctPlugin=[{id:'lp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart, meta=chart.getDatasetMeta(0);
+      meta.data.forEach((pt,i)=>{
+        const val=chart.data.datasets[0].data[i]; if(val==null) return;
+        ctx.save(); ctx.fillStyle='#3D52A0'; ctx.font='bold 9px sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText(val+'%',pt.x,pt.y-5); ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cl_${s.id}'),{type:'line',
+      data:{labels:${JSON.stringify(s.dayNums.map((d,i)=>s.blocked.includes(i)?d+'🔒':d))},
+        datasets:[{label:'%',data:${JSON.stringify(s.dpct)},borderColor:'#3D52A0',
+          backgroundColor:'rgba(61,82,160,.08)',pointRadius:3,tension:.3,fill:true,borderWidth:2,spanGaps:true}]},
+      options:{responsive:true,maintainAspectRatio:false,scales:{
+        y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
+        x:{ticks:{font:{family:F,size:10}},grid:{display:false}}},
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y!=null?c.parsed.y+'%':'Bloqueado'}}}},
+      plugins:linePctPlugin});
+    // Donut
+    const dist=[${s.esp},${s.rei},${s.gra},${s.cri}];
+    const donutPlugin=[{id:'dp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart, meta=chart.getDatasetMeta(0);
+      const total=chart.data.datasets[0].data.reduce((a,b)=>a+b,0); if(!total) return;
+      meta.data.forEach((arc,i)=>{
+        const val=chart.data.datasets[0].data[i]; if(!val) return;
+        const pct=((val/total)*100).toFixed(1)+'%';
+        const mid=(arc.startAngle+arc.endAngle)/2, r=(arc.innerRadius+arc.outerRadius)/2;
+        ctx.save(); ctx.fillStyle='#fff'; ctx.font='bold 11px sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(pct,arc.x+r*Math.cos(mid),arc.y+r*Math.sin(mid)); ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cd_${s.id}'),{type:'doughnut',
+      data:{labels:['Esperada','Reiterada','Grave','Crítica'],
+        datasets:[{data:dist,backgroundColor:['#2D7A4F','#3D52A0','#C47A1A','#B5291C'],borderWidth:0}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',
+        plugins:{legend:{position:'right',labels:{font:{family:F,size:11},boxWidth:12,padding:10}}}},
+      plugins:donutPlugin});
+    // Bar
+    const barData=${JSON.stringify(s.sortedBar)};
+    const colors=barData.map(s=>s.p>=90?'#2D7A4F':s.p>=85?'#3D52A0':s.p>=50?'#C47A1A':'#B5291C');
+    const barPctPlugin=[{id:'bp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val=chart.data.datasets[0].data[i];
+        ctx.save(); ctx.fillStyle='#3D3D3D'; ctx.font='bold 10px sans-serif';
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText(val+'%',bar.x+5,bar.y); ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cb_${s.id}'),{type:'bar',
+      data:{labels:barData.map(s=>s.n),datasets:[{data:barData.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+        scales:{x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
+          y:{ticks:{font:{family:F,size:10}},grid:{display:false}}},
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.x+'%'}}}},
+      plugins:barPctPlugin});
+  })();`).join('\n');
+
+  const sectionsHTML=sections.map(s=>{
+    const pc=s.pct>=0.85?'#2D7A4F':s.pct>=0.70?'#C47A1A':'#B5291C';
+    return `
+    <div class="month-block">
+      <div class="month-title">${s.label} · ${course}</div>
+      <div class="stats-row">
+        <div class="stat"><span class="sn" style="color:${pc}">${(s.pct*100).toFixed(1)}%</span><span class="sl">Asistencia</span></div>
+        <div class="stat"><span class="sn" style="color:#18181B">${s.tot}</span><span class="sl">Matrícula</span></div>
+        <div class="stat"><span class="sn" style="color:#2D7A4F">${s.esp}</span><span class="sl">Esperada</span></div>
+        <div class="stat"><span class="sn" style="color:#1A4B8C">${s.rei}</span><span class="sl">Reiterada</span></div>
+        <div class="stat"><span class="sn" style="color:#C47A1A">${s.gra}</span><span class="sl">Grave</span></div>
+        <div class="stat"><span class="sn" style="color:#B5291C">${s.cri}</span><span class="sl">Crítica</span></div>
+      </div>
+      <div class="chart-grid">
+        <div class="chart-box"><div class="chart-title">Asistencia diaria (%)</div><div style="height:180px"><canvas id="cl_${s.id}"></canvas></div></div>
+        <div class="chart-box"><div class="chart-title">Distribución por estado</div><div style="height:180px"><canvas id="cd_${s.id}"></canvas></div></div>
+        <div class="chart-box full"><div class="chart-title">% por alumno</div><div style="height:${s.barH}px"><canvas id="cb_${s.id}"></canvas></div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>Gráficos ${course}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#1C1C1E;padding:24px;font-size:12px}
+    h1{font-size:15px;font-weight:700;margin-bottom:4px;color:#1A4B8C}
+    .sub{font-size:11px;color:#52525B;margin-bottom:20px}
+    .month-block{margin-bottom:36px;page-break-inside:avoid}
+    .month-title{font-size:14px;font-weight:700;color:#3D52A0;border-bottom:2px solid #3D52A0;padding-bottom:5px;margin-bottom:12px}
+    .stats-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+    .stat{display:flex;flex-direction:column;align-items:center;min-width:60px}
+    .sn{font-size:18px;font-weight:800;line-height:1}
+    .sl{font-size:9px;color:#71717A;margin-top:2px}
+    .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .chart-box{border:1px solid #E4E4E7;border-radius:8px;padding:12px}
+    .chart-box.full{grid-column:1/-1}
+    .chart-title{font-size:10px;font-weight:700;color:#52525B;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+    .pbtn{display:block;margin:0 auto 24px;padding:8px 24px;background:#1A4B8C;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
+    @media print{.pbtn{display:none}body{padding:10px}.month-block{page-break-after:always}}
+  </style></head><body>
+  <button class="pbtn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  <h1>Gráficos de Asistencia — ${course}</h1>
+  <div class="sub">Escuela México Agua de la Gloria · Meses: ${sections.map(s=>s.label).join(', ')}</div>
+  ${sectionsHTML}
+  <script>${chartScript}<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ── INFORME SEMESTRAL HTML ────────────────────────────────────────────────────
