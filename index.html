@@ -3631,7 +3631,7 @@ function generateMultiChartPrint(selectedKeys){
       });
     }}];
     new Chart(document.getElementById('cb_${s.id}'),{type:'bar',
-      data:{labels:barData.map(s=>s.n),datasets:[{data:barData.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
+      data:{labels:barData.map((_,i)=>'Alumno '+(i+1)),datasets:[{data:barData.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
       options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
         scales:{x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},
           y:{ticks:{font:{family:F,size:10}},grid:{display:false}}},
