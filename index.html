@@ -581,11 +581,17 @@ tfoot td.tl{text-align:left}
     <!-- Paso 2: Selección de meses -->
     <div id="rp-step-months" style="display:none">
       <p style="margin-bottom:10px">Selecciona el o los meses a incluir en el informe:</p>
-      <div id="rp-month-list" style="max-height:260px;overflow-y:auto;border:1px solid var(--rule);border-radius:var(--r)"></div>
+      <div id="rp-month-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--rule);border-radius:var(--r)"></div>
       <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
         <button class="btn b-o" style="font-size:10.5px;padding:3px 10px" onclick="rpToggleAll(true)">Todos</button>
         <button class="btn b-o" style="font-size:10.5px;padding:3px 10px" onclick="rpToggleAll(false)">Ninguno</button>
         <span id="rp-sel-count" style="font-size:11px;color:var(--ink3);margin-left:auto"></span>
+      </div>
+      <div style="margin-top:10px">
+        <label style="font-size:11px;font-weight:600;color:var(--ink2);display:block;margin-bottom:4px">Curso (para gráficos anónimos)</label>
+        <select id="rp-course-sel" style="width:100%;padding:6px 8px;border:1px solid var(--rule);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--ink1)">
+          <option value="">Todos los cursos</option>
+        </select>
       </div>
       <div class="ma" style="margin-top:12px;flex-wrap:wrap;gap:8px">
         <button class="btn b-o" onclick="closeOv('ov-report')">Cancelar</button>
@@ -595,6 +601,9 @@ tfoot td.tl{text-align:left}
         </button>
         <button class="btn b-a" onclick="rpGenerateSemester()" title="Informe semestral HTML con gráficos, imprimible como PDF">
           📊 Informe Semestral
+        </button>
+        <button class="btn b-o" onclick="rpGenerateCharts()" title="Gráficos por curso con datos anonimizados (sin nombres reales)" style="color:#1A4B8C;border-color:rgba(26,75,140,.3)">
+          📈 Gráficos anónimos
         </button>
       </div>
     </div>
@@ -2927,6 +2936,10 @@ function checkReportPass() {
       <span style="font-size:12.5px;font-weight:500">${m.label}</span>
     </label>`).join('');
   rpUpdateCount();
+  // Poblar selector de cursos
+  const sel=document.getElementById('rp-course-sel');
+  sel.innerHTML='<option value="">Todos los cursos</option>'+
+    COURSES.filter(c=>months.some(m=>db[m.name]?.[c])).map(c=>`<option value="${c}">${c}</option>`).join('');
 }
 function rpUpdateCount(){
   const n=document.querySelectorAll('#rp-month-list input:checked').length;
@@ -3692,6 +3705,169 @@ function generateMultiChartPrint(selectedKeys){
 }
 
 // ── INFORME SEMESTRAL HTML ────────────────────────────────────────────────────
+function rpGenerateCharts(){
+  const selected=Array.from(document.querySelectorAll('#rp-month-list input:checked')).map(c=>c.value);
+  if(!selected.length){toast('Selecciona al menos un mes','err');return;}
+  const selectedCourse=document.getElementById('rp-course-sel').value; // '' = todos
+  closeOv('ov-report');
+
+  // Genera reporte de gráficos con nombres anonimizados
+  const allMonths=monthsForYear(activeYear).filter(m=>selected.includes(m.name));
+  const coursesToUse=selectedCourse?[selectedCourse]:COURSES;
+  const today=new Date(); today.setHours(23,59,59,999);
+
+  const sections=[];
+  allMonths.forEach(m=>{
+    coursesToUse.forEach(course=>{
+      const data=db[m.name]?.[course];
+      if(!data||!data.students?.length) return;
+      const students=data.students||[];
+      const headers=data.headers||[];
+      const dayNums=data.dayNums||headers.map((_,i)=>i+1);
+      const blocked=data.blocked||[];
+      const bs=new Set(blocked);
+      const parts=m.name.split(' ');
+      const yr=parseInt(parts[parts.length-1]);
+      const mn=MNAMES.indexOf(parts.slice(0,-1).join(' '))+1;
+
+      let pres=0,act=0,esp=0,rei=0,gra=0,cri=0;
+      students.forEach(s=>{
+        let sp=0,sa=0;
+        headers.forEach((_,i)=>{
+          if(bs.has(i)) return;
+          const d=new Date(yr,mn-1,dayNums[i]||i+1); if(d>today) return;
+          const dst=dayStatus(s,i,dayNums,yr,mn);
+          if(excluido(dst)) return; sa++;
+          if(dst==='present') sp++;
+        });
+        pres+=sp; act+=sa;
+        const p=sa>0?sp/sa:0;
+        if(p>=0.9)esp++; else if(p>=0.85)rei++; else if(p>=0.5)gra++; else cri++;
+      });
+      const pct=act>0?pres/act:0;
+
+      const dpct=headers.map((_,di)=>{
+        if(bs.has(di)) return null;
+        const c=students.filter(s=>s.dias[di]).length;
+        return students.length?parseFloat((c/students.length*100).toFixed(1)):0;
+      });
+
+      const sortedBar=[...students].map(s=>{
+        const pr=s.dias.filter((_,i)=>!bs.has(i)&&s.dias[i]).length;
+        const a=headers.filter((_,i)=>!bs.has(i)).length;
+        return{p:a>0?parseFloat((pr/a*100).toFixed(1)):0};
+      }).sort((a,b)=>a.p-b.p);
+
+      const id=(m.name+'_'+course).replace(/[^a-zA-Z0-9]/g,'_');
+      sections.push({id,label:m.label,course,pct,esp,rei,gra,cri,tot:students.length,dpct,dayNums,headers,blocked,sortedBar,barH:Math.max(220,students.length*30)});
+    });
+  });
+
+  if(!sections.length){toast('Sin datos para los meses seleccionados','err');return;}
+
+  const pColor=p=>p>=0.9?'#2D7A4F':p>=0.85?'#1A4B8C':p>=0.5?'#C47A1A':'#B5291C';
+
+  const chartScript=sections.map(s=>`
+  (function(){
+    const F="'Helvetica Neue',Arial,sans-serif";
+    const linePctPlugin=[{id:'lp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart,meta=chart.getDatasetMeta(0);
+      meta.data.forEach((pt,i)=>{
+        const val=chart.data.datasets[0].data[i]; if(val==null) return;
+        ctx.save();ctx.fillStyle='#3D52A0';ctx.font='bold 9px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='bottom';
+        ctx.fillText(val+'%',pt.x,pt.y-5);ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cl_${s.id}'),{type:'line',
+      data:{labels:${JSON.stringify(s.dayNums.map((d,i)=>s.blocked.includes(i)?d+'🔒':d))},
+        datasets:[{data:${JSON.stringify(s.dpct)},borderColor:'#3D52A0',backgroundColor:'rgba(61,82,160,.08)',pointRadius:3,tension:.3,fill:true,borderWidth:2,spanGaps:true}]},
+      options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},x:{ticks:{font:{family:F,size:10}},grid:{display:false}}},plugins:{legend:{display:false}}},
+      plugins:linePctPlugin});
+    const donutPlugin=[{id:'dp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart,meta=chart.getDatasetMeta(0);
+      const total=chart.data.datasets[0].data.reduce((a,b)=>a+b,0);if(!total)return;
+      meta.data.forEach((arc,i)=>{
+        const val=chart.data.datasets[0].data[i];if(!val)return;
+        const pct=((val/total)*100).toFixed(1)+'%';
+        const mid=(arc.startAngle+arc.endAngle)/2,r=(arc.innerRadius+arc.outerRadius)/2;
+        ctx.save();ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(pct,arc.x+r*Math.cos(mid),arc.y+r*Math.sin(mid));ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cd_${s.id}'),{type:'doughnut',
+      data:{labels:['Esperada','Reiterada','Grave','Crítica'],datasets:[{data:[${s.esp},${s.rei},${s.gra},${s.cri}],backgroundColor:['#2D7A4F','#3D52A0','#C47A1A','#B5291C'],borderWidth:0}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{font:{family:F,size:11},boxWidth:12,padding:10}}}},
+      plugins:donutPlugin});
+    const barData=${JSON.stringify(s.sortedBar)};
+    const colors=barData.map(s=>s.p>=90?'#2D7A4F':s.p>=85?'#3D52A0':s.p>=50?'#C47A1A':'#B5291C');
+    const barPctPlugin=[{id:'bp${s.id}',afterDatasetsDraw(chart){
+      const{ctx}=chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val=chart.data.datasets[0].data[i];
+        ctx.save();ctx.fillStyle='#3D3D3D';ctx.font='bold 10px sans-serif';
+        ctx.textAlign='left';ctx.textBaseline='middle';
+        ctx.fillText(val+'%',bar.x+5,bar.y);ctx.restore();
+      });
+    }}];
+    new Chart(document.getElementById('cb_${s.id}'),{type:'bar',
+      data:{labels:barData.map((_,i)=>'Alumno '+(i+1)),datasets:[{data:barData.map(s=>s.p),backgroundColor:colors,borderWidth:0,borderRadius:2}]},
+      options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:F,size:10}},grid:{color:'#EEECEA'}},y:{ticks:{font:{family:F,size:10}},grid:{display:false}}},plugins:{legend:{display:false}}},
+      plugins:barPctPlugin});
+  })();`).join('\n');
+
+  const sectionsHTML=sections.map(s=>`
+    <div class="month-block">
+      <div class="month-title">${s.label} · ${s.course}</div>
+      <div class="stats-row">
+        <div class="stat"><span class="sn" style="color:${pColor(s.pct)}">${(s.pct*100).toFixed(1)}%</span><span class="sl">Asistencia</span></div>
+        <div class="stat"><span class="sn">${s.tot}</span><span class="sl">Matrícula</span></div>
+        <div class="stat"><span class="sn" style="color:#2D7A4F">${s.esp}</span><span class="sl">Esperada</span></div>
+        <div class="stat"><span class="sn" style="color:#1A4B8C">${s.rei}</span><span class="sl">Reiterada</span></div>
+        <div class="stat"><span class="sn" style="color:#C47A1A">${s.gra}</span><span class="sl">Grave</span></div>
+        <div class="stat"><span class="sn" style="color:#B5291C">${s.cri}</span><span class="sl">Crítica</span></div>
+      </div>
+      <div class="chart-grid">
+        <div class="chart-box"><div class="chart-title">Asistencia diaria (%)</div><div style="height:180px"><canvas id="cl_${s.id}"></canvas></div></div>
+        <div class="chart-box"><div class="chart-title">Distribución por estado</div><div style="height:180px"><canvas id="cd_${s.id}"></canvas></div></div>
+        <div class="chart-box full"><div class="chart-title">% por alumno (anonimizado)</div><div style="height:${s.barH}px"><canvas id="cb_${s.id}"></canvas></div></div>
+      </div>
+    </div>`).join('');
+
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+  <title>Gráficos Anónimos — Asistencia</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"><\/script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;background:#fff;color:#1C1C1E;padding:24px;font-size:12px}
+    h1{font-size:15px;font-weight:700;margin-bottom:4px;color:#1A4B8C}
+    .sub{font-size:11px;color:#52525B;margin-bottom:6px}
+    .aviso{font-size:10px;color:#92400E;background:#FEF6EC;border:1px solid rgba(196,122,26,.3);border-radius:6px;padding:6px 10px;margin-bottom:20px;display:inline-block}
+    .month-block{margin-bottom:36px;page-break-inside:avoid}
+    .month-title{font-size:14px;font-weight:700;color:#3D52A0;border-bottom:2px solid #3D52A0;padding-bottom:5px;margin-bottom:12px}
+    .stats-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+    .stat{display:flex;flex-direction:column;align-items:center;min-width:60px}
+    .sn{font-size:18px;font-weight:800;line-height:1;color:#18181B}
+    .sl{font-size:9px;color:#71717A;margin-top:2px}
+    .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .chart-box{border:1px solid #E4E4E7;border-radius:8px;padding:12px}
+    .chart-box.full{grid-column:1/-1}
+    .chart-title{font-size:10px;font-weight:700;color:#52525B;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+    .pbtn{display:block;margin:0 auto 24px;padding:8px 24px;background:#1A4B8C;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer}
+    @media print{.pbtn{display:none}body{padding:10px}.month-block{page-break-after:always}}
+  </style></head><body>
+  <button class="pbtn" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+  <h1>Informe de Asistencia — Datos Anonimizados</h1>
+  <div class="sub">Escuela México Agua de la Gloria · ${selectedCourse?'Curso: '+selectedCourse+' · ':''} Meses: ${allMonths.map(m=>m.label).join(', ')}</div>
+  <div class="aviso">🔒 Documento con fines estadísticos — los nombres de estudiantes han sido reemplazados por códigos (Alumno 1, Alumno 2…) para proteger la privacidad.</div>
+  ${sectionsHTML}
+  <script>${chartScript}<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
 function rpGenerateSemester(){
   const selected=Array.from(document.querySelectorAll('#rp-month-list input:checked')).map(c=>c.value);
   if(!selected.length){toast('Selecciona al menos un mes','err');return;}
