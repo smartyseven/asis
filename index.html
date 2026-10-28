@@ -426,6 +426,25 @@ tfoot td.tl{text-align:left}
   </div>
 </div>
 
+<!-- LICENCIAS — LISTA ACUMULADA -->
+<div class="ov" id="ov-lic-all">
+  <div class="md" style="width:860px;max-width:calc(100vw - 24px);max-height:88vh;overflow-y:auto">
+    <h3 style="margin:0 0 12px">📋 Todas las licencias</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <input id="la-buscar" type="text" placeholder="Buscar alumno, RUT o apoderado…" oninput="renderLicAll()"
+        style="flex:1;min-width:180px;padding:7px 10px;border:1px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fb);background:var(--paper)">
+      <select id="la-curso" onchange="renderLicAll()" style="padding:7px 10px;border:1px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fb);background:var(--paper)"></select>
+      <select id="la-mes" onchange="renderLicAll()" style="padding:7px 10px;border:1px solid var(--rule);border-radius:var(--r);font-size:13px;font-family:var(--fb);background:var(--paper)"></select>
+    </div>
+    <div id="la-resumen" style="font-size:12px;color:var(--ink2);margin-bottom:8px"></div>
+    <div id="la-body" style="overflow-x:auto"></div>
+    <div class="ma" style="margin-top:14px;justify-content:space-between">
+      <button class="btn b-a" onclick="closeOv('ov-lic-all');openLicModal()" style="color:#1A4B8C;background:#EFF6FF;border-color:rgba(26,75,140,.3)">+ Nueva licencia</button>
+      <button class="btn b-o" onclick="closeOv('ov-lic-all')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- LICENCIA MÉDICA MODAL -->
 <div class="ov" id="ov-lic">
   <div class="md" style="width:480px">
@@ -463,7 +482,7 @@ tfoot td.tl{text-align:left}
     </div>
     <div class="me" id="lic-err" style="display:none;margin-top:8px"></div>
     <div class="ma" style="margin-top:14px">
-      <button class="btn b-o" onclick="closeOv('ov-lic')">Cancelar</button>
+      <button class="btn b-o" onclick="closeOv('ov-lic');_licEditId=null;_licEditRut=null;if(_licFromAll){_licFromAll=false;openLicAll();}">Cancelar</button>
       <button class="btn b-a" onclick="saveLic()">Guardar licencia</button>
     </div>
   </div>
@@ -754,6 +773,7 @@ const USERS = {
   'PIE':        { pass:'pie4614',    courses:null,          role:'pie'      },
   'secretaria': { pass:'sec4614',    courses:null,          role:'lic'      },
   'paradocente':{ pass:'para4614',   courses:null,          role:'para'     },
+  'licencias':  { pass:'licmed2026', courses:null,          role:'para'     },
   'NT':       { pass:'valecr0',    courses:['NT1','NT2'], role:'docente'  },
   '1':        { pass:'cint171',    courses:['1° Básico'], role:'docente'  },
   '2':        { pass:'patymu2',    courses:['2° Básico'], role:'docente'  },
@@ -820,6 +840,9 @@ function buildMonth(year, month) {
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 let _suppressListener = false;
+// Solo se escribe en Firebase después de haber leído bien los datos de la nube.
+// Así, si la lectura falla (sin internet, etc.), nunca se sobrescribe la nube con datos incompletos.
+let fbReadOK = false;
 
 function saveDB() {
   // Silenciar el listener brevemente para no re-renderizar al guardar local
@@ -827,7 +850,11 @@ function saveDB() {
   setTimeout(()=>{ _suppressListener = false; }, 1500);
   // Guardar en Firebase (fuente principal)
   if(useFirebase && firebaseDB){
-    firebaseDB.ref(DB_PATH).set(db).catch(e=>console.error('Firebase save error:',e));
+    if(fbReadOK){
+      firebaseDB.ref(DB_PATH).set(db).catch(e=>console.error('Firebase save error:',e));
+    } else if(currentUser){
+      toast('Sin conexión con la nube: este cambio NO se guardó. Recarga la página e inténtalo de nuevo.','err');
+    }
   }
   // Respaldo local
   try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
@@ -841,6 +868,7 @@ function startRealtimeSync() {
     const remote = fbFix(snap.val());
     if(!remote) return;
     db = remote;
+    fbReadOK = true;
     mergeInitial();
     renderAll();
     toast('Datos actualizados desde otro equipo');
@@ -911,6 +939,7 @@ async function loadDB() {
   if(useFirebase && firebaseDB){
     try {
       const snap = await firebaseDB.ref(DB_PATH).get();
+      fbReadOK = true;
       if(snap.exists()){
         db = fbFix(snap.val()) || {};
       } else {
@@ -1524,6 +1553,9 @@ function renderMain() {
       </button>`:''}
       ${canEnterLic()?`<button class="btn b-o no-print" onclick="openLicModal()" style="flex-shrink:0;color:#1A4B8C;border-color:rgba(26,75,140,.3)" title="Ingresar licencia médica">
         🏥 Ingresar licencia
+      </button>`:''}
+      ${canEnterLic()?`<button class="btn b-o no-print" onclick="openLicAll()" style="flex-shrink:0;color:#1A4B8C;border-color:rgba(26,75,140,.3)" title="Ver y editar todas las licencias">
+        📋 Todas las licencias
       </button>`:''}
       ${curSection==='mes'&&curView==='charts'?`<button class="btn b-o no-print" onclick="openMultiPrintModal()" style="flex-shrink:0" title="Imprimir gráficos de varios meses en un PDF">
         🖨️ Imprimir meses…
@@ -3346,6 +3378,7 @@ function getLicTotal(rut) {
 }
 
 function openLicModal(prefillRut, prefillNombre, prefillCurso) {
+  _licFromAll=false; _licEditId=null; _licEditRut=null;
   // Poblar selector de cursos con los meses activos
   const sel = document.getElementById('lic-curso');
   sel.innerHTML = '<option value="">— Selecciona curso —</option>' +
@@ -3390,14 +3423,98 @@ function licActualizarDias() {
   info.style.display = 'block';
 }
 
-let _licListRut=null, _licListNombre='', _licListCurso='', _licEditId=null;
+let _licListRut=null, _licListNombre='', _licListCurso='', _licEditId=null, _licEditRut=null;
 
 function openLicList(rut, nombre, curso) {
   _licListRut=rut; _licListNombre=nombre; _licListCurso=curso;
+  _licFromAll=false;
   renderLicList();
   if(!canEnterLic()) document.getElementById('ll-add-btn').style.display='none';
   else document.getElementById('ll-add-btn').style.display='';
   document.getElementById('ov-lic-list').classList.add('show');
+}
+
+// ── LISTA ACUMULADA DE LICENCIAS ──
+let _licFromAll=false;
+
+function openLicAll() {
+  const cursoSel=document.getElementById('la-curso');
+  const prevCurso=cursoSel.value;
+  cursoSel.innerHTML='<option value="">Todos los cursos</option>'+
+    COURSES.map(c=>`<option value="${c}">${c}</option>`).join('');
+  cursoSel.value=prevCurso;
+  const mesSel=document.getElementById('la-mes');
+  const prevMes=mesSel.value;
+  mesSel.innerHTML='<option value="">Todos los meses</option>'+
+    monthsForYear(activeYear).filter(m=>db[m.name])
+      .map(m=>`<option value="${m.month}">${m.label}</option>`).join('');
+  mesSel.value=prevMes;
+  renderLicAll();
+  document.getElementById('ov-lic-all').classList.add('show');
+}
+
+function renderLicAll() {
+  const esc=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const fmtDate=d=>d?d.split('-').reverse().join('/'):'—';
+  const q=document.getElementById('la-buscar').value.trim().toLowerCase();
+  const fCurso=document.getElementById('la-curso').value;
+  const fMes=parseInt(document.getElementById('la-mes').value)||0;
+  const mStart=fMes?new Date(activeYear,fMes-1,1):null, mEnd=fMes?new Date(activeYear,fMes,0):null;
+  let list=[];
+  Object.keys(db['_lic']||{}).forEach(rut=>{
+    getLicArr(rut).forEach(l=>{ if(l) list.push({...l,rut}); });
+  });
+  list=list.filter(l=>{
+    if(fCurso && l.curso!==fCurso) return false;
+    if(fMes && !(new Date(l.fecha_inicio)<=mEnd && new Date(l.fecha_fin)>=mStart)) return false;
+    if(q && !`${l.nombre} ${l.rut} ${l.apoderado}`.toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a,b)=>(b.fecha_inicio||'').localeCompare(a.fecha_inicio||''));
+  const totDias=list.reduce((t,l)=>t+Math.max(0,Math.round((new Date(l.fecha_fin)-new Date(l.fecha_inicio))/86400000)+1),0);
+  const alumnos=new Set(list.map(l=>l.rut)).size;
+  document.getElementById('la-resumen').innerHTML=
+    `<strong>${list.length}</strong> licencia${list.length!==1?'s':''} · <strong>${alumnos}</strong> alumno${alumnos!==1?'s':''} · <strong>${totDias}</strong> día${totDias!==1?'s':''} calendario`;
+  const body=document.getElementById('la-body');
+  if(!list.length){
+    body.innerHTML='<p style="color:var(--ink3);font-size:13px;padding:12px 0">No hay licencias que coincidan con el filtro.</p>';
+    return;
+  }
+  const th='padding:6px 8px;font-size:10px;color:var(--ink2);font-weight:700;text-align:left;border-bottom:1px solid var(--rule);white-space:nowrap';
+  const td='padding:6px 8px;font-size:12px;border-bottom:1px solid var(--rule2);vertical-align:middle';
+  body.innerHTML=`<table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="${th}">Alumno</th><th style="${th}">Curso</th><th style="${th}">Apoderado</th>
+      <th style="${th}">Entregada</th><th style="${th}">Período</th><th style="${th};text-align:center">Días</th>
+      ${canEnterLic()?`<th style="${th}"></th>`:''}
+    </tr></thead>
+    <tbody>${list.map(l=>{
+      const dias=Math.round((new Date(l.fecha_fin)-new Date(l.fecha_inicio))/86400000)+1;
+      return `<tr>
+        <td style="${td};font-weight:600">${esc(l.nombre)}<div style="font-size:10px;color:var(--ink3);font-weight:400">${esc(l.rut)}</div></td>
+        <td style="${td};white-space:nowrap">${esc(l.curso)}</td>
+        <td style="${td}">${esc(l.apoderado)}</td>
+        <td style="${td};white-space:nowrap">${fmtDate(l.fecha_entrega)}</td>
+        <td style="${td};white-space:nowrap;color:var(--acc);font-weight:600">${fmtDate(l.fecha_inicio)} → ${fmtDate(l.fecha_fin)}</td>
+        <td style="${td};text-align:center"><span style="background:var(--as);color:var(--acc);border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700">${dias}</span></td>
+        ${canEnterLic()?`<td style="${td};white-space:nowrap"><div style="display:flex;gap:4px">
+          <button onclick="editLicFromAll('${esc(l.rut)}',${l.id})" class="btn b-o" style="font-size:11px;padding:3px 8px" title="Editar">✏️</button>
+          <button onclick="deleteLicFromAll('${esc(l.rut)}',${l.id})" class="btn b-r" style="font-size:11px;padding:3px 8px" title="Eliminar">🗑</button>
+        </div></td>`:''}
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+function editLicFromAll(rut, id) {
+  if(!canEnterLic()) return;
+  closeOv('ov-lic-all');
+  editLicEntry(rut, id);
+  _licFromAll=true;
+}
+
+function deleteLicFromAll(rut, id) {
+  deleteLic(rut, id);
+  renderLicAll();
 }
 
 function openLicFromList() {
@@ -3454,7 +3571,7 @@ function deleteLic(rut, id) {
 function editLicEntry(rut, id) {
   const lic=(fbFix(db['_lic']?.[rut])||[]).find(l=>l.id===id);
   if(!lic) return;
-  _licEditId=id;
+  _licEditId=id; _licEditRut=rut;
   closeOv('ov-lic-list');
   // Populate modal
   const sel=document.getElementById('lic-curso');
@@ -3496,9 +3613,16 @@ function saveLic() {
   const dias = Math.round((new Date(fin) - new Date(ini)) / 86400000) + 1;
 
   if (_licEditId) {
-    const idx = db['_lic'][rut].findIndex(l => l.id === _licEditId);
-    if (idx !== -1) db['_lic'][rut][idx] = { id: _licEditId, curso, nombre, apoderado: apod, fecha_entrega: entrega, fecha_inicio: ini, fecha_fin: fin };
-    _licEditId = null;
+    const entry = { id: _licEditId, curso, nombre, apoderado: apod, fecha_entrega: entrega, fecha_inicio: ini, fecha_fin: fin };
+    if (_licEditRut && _licEditRut !== rut) {
+      // Se cambió el alumno: mover la licencia al nuevo RUT
+      db['_lic'][_licEditRut] = getLicArr(_licEditRut).filter(l => l.id !== _licEditId);
+      db['_lic'][rut].push(entry);
+    } else {
+      const idx = db['_lic'][rut].findIndex(l => l.id === _licEditId);
+      if (idx !== -1) db['_lic'][rut][idx] = entry;
+    }
+    _licEditId = null; _licEditRut = null;
     toast(`Licencia actualizada — ${dias} día${dias!==1?'s':''} ✓`, 'ok');
   } else {
     db['_lic'][rut].push({ id: Date.now(), curso, nombre, apoderado: apod, fecha_entrega: entrega, fecha_inicio: ini, fecha_fin: fin });
@@ -3507,6 +3631,7 @@ function saveLic() {
   saveDB();
   closeOv('ov-lic');
   renderMain();
+  if (_licFromAll) { _licFromAll = false; openLicAll(); }
 }
 
 // ── IMPRIMIR GRÁFICOS MULTI-MES ──────────────────────────────────────────────
